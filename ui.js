@@ -89,6 +89,102 @@
     return Math.max(0, Math.floor(safeNumber(value, fallback)));
   }
 
+  function normalizeRarity(value, category) {
+    const raw = typeof value === "string" ? value : "";
+
+    if (category === "evolution") {
+      return "evolution";
+    }
+    if (category === "relic") {
+      return "relic";
+    }
+    if (raw === "legendary" || raw === "전설") {
+      return "legendary";
+    }
+    if (raw === "epic" || raw === "영웅") {
+      return "epic";
+    }
+    if (raw === "rare" || raw === "희귀") {
+      return "rare";
+    }
+    if (raw === "uncommon" || raw === "고급") {
+      return "uncommon";
+    }
+    if (raw === "common" || raw === "일반") {
+      return "common";
+    }
+
+    return "";
+  }
+
+  function rarityForItem(item, fallbackCategory) {
+    const value = item || {};
+    const category = value.category || fallbackCategory || "";
+    const normalized = normalizeRarity(value.rarity, category);
+    const rewardMultiplier = safeNumber(value.rewardMultiplier, 0);
+    const difficulty = safeNumber(value.difficulty, 0);
+
+    if (normalized) {
+      return normalized;
+    }
+    if (value.id === "lightningChain" || value.id === "voidMine") {
+      return "rare";
+    }
+    if (value.id === "orbitBlade" || value.id === "wideWave") {
+      return "uncommon";
+    }
+    if (category === "weapon") {
+      return "common";
+    }
+    if (value.weaponId) {
+      return "rare";
+    }
+    if (difficulty >= 3 || rewardMultiplier >= 1.3) {
+      return "rare";
+    }
+    if (difficulty >= 2 || rewardMultiplier > 1) {
+      return "uncommon";
+    }
+
+    return "common";
+  }
+
+  function rarityMeta(rarity) {
+    const rarityMap = Data.rarityColors || {};
+    return rarityMap[rarity] || rarityMap.common || {
+      label: "일반",
+      color: "#9aa4b2",
+      bg: "rgba(154, 164, 178, 0.12)"
+    };
+  }
+
+  function applyRarityStyle(element, item, fallbackCategory) {
+    const rarity = typeof item === "string" ? item : rarityForItem(item, fallbackCategory);
+    const meta = rarityMeta(rarity);
+
+    if (!element) {
+      return rarity;
+    }
+
+    element.classList.add("rarity-card", "rarity-" + rarity);
+    element.dataset.rarity = rarity;
+    element.style.setProperty("--rarity-color", meta.color || "#9aa4b2");
+    element.style.setProperty("--rarity-bg", meta.bg || "rgba(154, 164, 178, 0.12)");
+    element.style.setProperty("--rarity-glow", meta.bg || "rgba(154, 164, 178, 0.12)");
+    return rarity;
+  }
+
+  function createRarityBadge(item, fallbackCategory) {
+    const rarity = rarityForItem(item, fallbackCategory);
+    const meta = rarityMeta(rarity);
+    const badge = document.createElement("em");
+
+    badge.className = "rarity-badge";
+    badge.textContent = meta.label || "일반";
+    applyRarityStyle(badge, rarity);
+    return badge;
+  }
+
   function iconFor(id, category) {
     const icons = {
       wanderer: "◆",
@@ -121,6 +217,50 @@
       splitShot: "⋯",
       orbitalShield: "◌",
       abyssNova: "✦",
+      abyssBulletCount: "✦",
+      abyssBulletFocus: "●",
+      bladeCountUp: "✦",
+      bladeSizeUp: "◆",
+      bladeSpinUp: "↻",
+      chainForkUp: "ϟ",
+      chainLinkUp: "⌁",
+      chainWidthUp: "▰",
+      mineCountUp: "◇",
+      mineRadiusUp: "◉",
+      minePowerUp: "✹",
+      waveCountUp: "≋",
+      waveRadiusUp: "◌",
+      wavePowerUp: "◎",
+      bloodSeeker: "♥",
+      engineer: "⚙",
+      abyssApostle: "◆",
+      bloodScythe: "☽",
+      riftSpear: "↗",
+      starDust: "✦",
+      brokenSanctum: "▣",
+      deadCorridor: "☠",
+      stormRift: "ϟ",
+      bloodHook: "♥",
+      riftLens: "◈",
+      stormCore: "ϟ",
+      mineRig: "▦",
+      voidEcho: "〰",
+      gluttonHeart: "❤",
+      brokenClock: "◷",
+      smallSun: "☀",
+      hunterMark: "◎",
+      abyssNecklace: "◆",
+      glassShard: "◇",
+      survivorFlag: "⚑",
+      scytheReachUp: "☽",
+      scythePowerUp: "♥",
+      scytheSweepUp: "↺",
+      spearWidthUp: "↗",
+      spearPierceUp: "⇥",
+      spearPowerUp: "◆",
+      starCountUp: "✦",
+      starPowerUp: "✶",
+      starSpreadUp: "✹",
       bloodCore: "♥",
       sharpHeart: "⚔",
       hunterEye: "◎",
@@ -220,7 +360,7 @@
     }
   }
 
-  function renderSelectionPanel(panel, title, items, selectedId, onSelect) {
+  function renderSelectionPanel(panel, title, items, selectedId, onSelect, category) {
     if (!panel) {
       return;
     }
@@ -240,15 +380,19 @@
       const icon = createIcon(iconFor(item.id));
       const body = document.createElement("span");
       const name = document.createElement("strong");
+      const badge = createRarityBadge(item, category);
       const description = document.createElement("span");
       const multiplier = safeNumber(item.rewardMultiplier, 0);
 
       button.className = item.id === selectedId ? "choice-button is-selected" : "choice-button";
       button.type = "button";
+      applyRarityStyle(button, item, category);
+      applyRarityStyle(icon, item, category);
       body.className = "choice-body";
       name.textContent = item.name + (item.difficulty ? " · " + item.difficulty : "") + (multiplier > 0 ? " · x" + multiplier.toFixed(2) : "");
       description.textContent = shortenDescription(item.description);
       body.appendChild(name);
+      body.appendChild(badge);
       body.appendChild(description);
       button.appendChild(icon);
       button.appendChild(body);
@@ -292,15 +436,19 @@
       const icon = createIcon(iconFor(item.id));
       const body = document.createElement("span");
       const name = document.createElement("strong");
+      const badge = createRarityBadge(item, "upgrade");
       const description = document.createElement("span");
 
       button.className = "choice-button";
       button.type = "button";
+      applyRarityStyle(button, item, "upgrade");
+      applyRarityStyle(icon, item, "upgrade");
       button.disabled = level >= item.maxLevel || safeInteger(save.shards, 0) < cost;
       body.className = "choice-body";
       name.textContent = item.name + " Lv." + level;
       description.textContent = "◆ " + cost + " · 최대 " + item.maxLevel;
       body.appendChild(name);
+      body.appendChild(badge);
       body.appendChild(description);
       button.appendChild(icon);
       button.appendChild(body);
@@ -353,6 +501,8 @@
       const name = document.createElement("strong");
       const description = document.createElement("span");
       row.className = completed[mission.id] ? "choice-button is-selected" : "choice-button";
+      applyRarityStyle(row, mission, "mission");
+      applyRarityStyle(icon, mission, "mission");
       body.className = "choice-body";
       name.textContent = mission.name + " +" + safeInteger(mission.reward, 0);
       description.textContent = completed[mission.id] ? "완료" : ("진행 " + safeInteger(progress[mission.id], 0) + "/" + safeInteger(mission.target, 1));
@@ -832,13 +982,19 @@
         const name = document.createElement("strong");
         const description = document.createElement("span");
         const category = ability.category || "normal";
+        const rarity = rarityForItem(ability, category);
+        const meta = rarityMeta(rarity);
 
         button.className = category === "evolution" ? "ability-button is-evolution" : (category === "relic" ? "ability-button is-relic" : "ability-button");
         button.type = "button";
         button.dataset.abilityId = ability.id;
+        applyRarityStyle(button, ability, category);
+        applyRarityStyle(icon, ability, category);
         body.className = "ability-body";
         tag.className = "ability-tag";
+        applyRarityStyle(tag, rarity);
         tag.textContent = category === "evolution" ? "진화" : (category === "relic" ? "유물 · " + (ability.rarity || "일반") : "강화");
+        tag.textContent = meta.label || "일반";
         name.textContent = ability.name;
         description.textContent = shortenDescription(ability.description);
         body.appendChild(tag);
