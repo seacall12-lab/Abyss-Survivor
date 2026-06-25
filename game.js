@@ -90,6 +90,87 @@
     return bosses[zone.bossId] || bosses.watcher || getEnemyData("boss");
   }
 
+  function getWeapon(run) {
+    return findById(Data.weapons, run && run.selectedWeaponId, "abyssBullet");
+  }
+
+  function pushEffect(run, effect) {
+    const game = Data.game || {};
+    const maxEffects = Math.max(1, safeNumber(game.maxEffects, 48));
+
+    if (!run.effects) {
+      run.effects = [];
+    }
+
+    while (run.effects.length >= maxEffects) {
+      run.effects.shift();
+    }
+
+    run.effects.push(effect);
+  }
+
+  function countEliteEnemies(run) {
+    let count = 0;
+
+    if (!run || !run.enemies) {
+      return 0;
+    }
+
+    for (let i = 0; i < run.enemies.length; i += 1) {
+      if (run.enemies[i] && run.enemies[i].elite) {
+        count += 1;
+      }
+    }
+
+    return count;
+  }
+
+  function applyEliteModifier(enemy, run) {
+    const game = Data.game || {};
+    const modifiers = ["giant", "swift", "toxic", "splitter", "volatile"];
+    const elapsed = safeNumber(run && run.time, 0);
+    const maxElites = Math.max(0, safeNumber(game.maxEliteEnemies, 3));
+    const baseChance = clamp(safeNumber(game.eliteChance, 0.07), 0, 0.25);
+    const challengeBonus = run && run.selectedChallengeId !== "normal" ? 0.02 : 0;
+    const zoneBonus = run && run.selectedZoneId === "abyssCore" ? 0.01 : 0;
+    const chance = clamp(baseChance + challengeBonus + zoneBonus, 0, 0.25);
+    let modifier;
+
+    if (!enemy || enemy.isBoss || elapsed < 60 || countEliteEnemies(run) >= maxElites || Math.random() > chance) {
+      return;
+    }
+
+    modifier = modifiers[Math.floor(Math.random() * modifiers.length)] || "giant";
+    enemy.elite = true;
+    enemy.eliteType = modifier;
+    enemy.score = Math.max(1, safeNumber(enemy.score, 1) + 2);
+    enemy.exp = Math.max(1, safeNumber(enemy.exp, 1) + 8);
+
+    if (modifier === "giant") {
+      enemy.maxHp *= 1.9;
+      enemy.hp = enemy.maxHp;
+      enemy.radius *= 1.25;
+      enemy.speed *= 0.86;
+      enemy.color = "#f0b35f";
+    } else if (modifier === "swift") {
+      enemy.maxHp *= 0.85;
+      enemy.hp = enemy.maxHp;
+      enemy.speed *= 1.55;
+      enemy.color = "#9cf070";
+    } else if (modifier === "toxic") {
+      enemy.damage *= 1.45;
+      enemy.color = "#73ef9b";
+    } else if (modifier === "splitter") {
+      enemy.maxHp *= 1.2;
+      enemy.hp = enemy.maxHp;
+      enemy.color = "#8fd8ff";
+    } else if (modifier === "volatile") {
+      enemy.maxHp *= 0.95;
+      enemy.hp = enemy.maxHp;
+      enemy.color = "#ff8a6b";
+    }
+  }
+
   function chooseEnemyType(run) {
     const elapsed = safeNumber(run.time, 0);
     const wave = getWaveConfig(run.time);
@@ -193,6 +274,7 @@
     }
 
     const enemy = createEnemy(type || chooseEnemyType(run), run);
+    applyEliteModifier(enemy, run);
     run.enemies.push(enemy);
     return enemy;
   }
@@ -293,6 +375,7 @@
     const maxProjectiles = Math.max(1, safeNumber(game.maxProjectiles, 96));
     const angle = Math.atan2(dirY, dirX) + safeNumber(angleOffset, 0);
     const speed = Math.max(0, safeNumber(player.projectileSpeed, 280));
+    const weapon = getWeapon(run);
 
     if (run.projectiles.length >= maxProjectiles) {
       return false;
@@ -305,7 +388,7 @@
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
       radius: Math.max(1, safeNumber(player.projectileRadius, 4)),
-      damage: Math.max(1, safeNumber(player.damage, 12)),
+      damage: Math.max(1, safeNumber(player.damage, 12) * safeNumber(weapon.damageMultiplier, 1)),
       life: Math.max(0.1, safeNumber((Data.projectile || {}).lifeTime, 2.2)),
       pierce: run.evolutions && run.evolutions.piercingShot ? 1 : Math.max(0, safeNumber((Data.projectile || {}).pierce, 0)),
       hitIds: {}
@@ -314,26 +397,152 @@
     return true;
   }
 
-  function attackNearest(run) {
-    const player = run.player;
-    const game = Data.game || {};
-    const maxProjectiles = Math.max(1, safeNumber(game.maxProjectiles, 80));
+  function findNearestEnemy(run, origin, excluded) {
     let nearest = null;
     let nearestDistance = Infinity;
 
-    if (!run.enemies.length || run.projectiles.length >= maxProjectiles) {
-      return;
-    }
-
     for (let i = 0; i < run.enemies.length; i += 1) {
-      const dist = distanceSquared(player, run.enemies[i]);
+      if (run.enemies[i] === excluded) {
+        continue;
+      }
+
+      const dist = distanceSquared(origin, run.enemies[i]);
       if (dist < nearestDistance) {
         nearestDistance = dist;
         nearest = run.enemies[i];
       }
     }
 
+    return nearest;
+  }
+
+  function ensureWeaponOrbital(run) {
+    if (!run.orbitals) {
+      run.orbitals = [];
+    }
+
+    for (let i = 0; i < run.orbitals.length; i += 1) {
+      if (run.orbitals[i].weaponId === "orbitBlade") {
+        return;
+      }
+    }
+
+    run.orbitals.push({
+      weaponId: "orbitBlade",
+      angle: 0,
+      distance: 46,
+      radius: 8,
+      damage: Math.max(6, safeNumber(run.player && run.player.damage, 12) * 0.8),
+      speed: 3.3
+    });
+  }
+
+  function attackWithChain(run, nearest, weapon) {
+    const hit = {};
+    const chainCount = Math.max(1, Math.floor(safeNumber(weapon.chainCount, 3)));
+    let current = nearest;
+
+    for (let i = 0; i < chainCount && current; i += 1) {
+      hit[String(current.id)] = true;
+      pushEffect(run, {
+        type: "lightning",
+        fromX: i === 0 ? safeNumber(run.player.x, 0) : safeNumber(nearest.x, 0),
+        fromY: i === 0 ? safeNumber(run.player.y, 0) : safeNumber(nearest.y, 0),
+        toX: safeNumber(current.x, 0),
+        toY: safeNumber(current.y, 0),
+        life: 0.18
+      });
+      damageEnemy(run, current, Math.max(2, safeNumber(run.player.damage, 12) * safeNumber(weapon.damageMultiplier, 1) * (i === 0 ? 1 : 0.72)));
+
+      nearest = current;
+      current = null;
+      for (let j = 0; j < run.enemies.length; j += 1) {
+        if (!hit[String(run.enemies[j].id)] && distanceSquared(nearest, run.enemies[j]) <= 78 * 78) {
+          current = run.enemies[j];
+          break;
+        }
+      }
+    }
+  }
+
+  function attackWithMine(run, weapon) {
+    const player = run.player;
+
+    pushEffect(run, {
+      type: "mine",
+      x: safeNumber(player.x, 0),
+      y: safeNumber(player.y, 0),
+      radius: Math.max(20, safeNumber(weapon.radius, 48)),
+      damage: Math.max(4, safeNumber(player.damage, 12) * safeNumber(weapon.damageMultiplier, 1)),
+      armTimer: 0.45,
+      life: 1.1,
+      triggered: false
+    });
+  }
+
+  function attackWithWave(run, nearest, weapon) {
+    const player = run.player;
+    const radius = Math.max(30, safeNumber(weapon.radius, 118));
+    const dir = normalize(safeNumber(nearest.x, 0) - safeNumber(player.x, 0), safeNumber(nearest.y, 0) - safeNumber(player.y, 0));
+
+    pushEffect(run, {
+      type: "wave",
+      x: safeNumber(player.x, 0),
+      y: safeNumber(player.y, 0),
+      dirX: dir.x,
+      dirY: dir.y,
+      radius: radius,
+      life: 0.22
+    });
+
+    for (let i = run.enemies.length - 1; i >= 0; i -= 1) {
+      const enemy = run.enemies[i];
+      const toEnemy = normalize(safeNumber(enemy.x, 0) - safeNumber(player.x, 0), safeNumber(enemy.y, 0) - safeNumber(player.y, 0));
+      const dot = dir.x * toEnemy.x + dir.y * toEnemy.y;
+      if (distanceSquared(player, enemy) <= radius * radius && dot > 0.42) {
+        damageEnemy(run, enemy, Math.max(3, safeNumber(player.damage, 12) * safeNumber(weapon.damageMultiplier, 1)));
+      }
+    }
+  }
+
+  function attackNearest(run) {
+    const player = run.player;
+    const game = Data.game || {};
+    const maxProjectiles = Math.max(1, safeNumber(game.maxProjectiles, 80));
+    const weapon = getWeapon(run);
+    const attackType = weapon.attackType || "projectile";
+    let nearest;
+
+    if (!run.enemies.length) {
+      return;
+    }
+
+    nearest = findNearestEnemy(run, player, null);
     if (!nearest) {
+      return;
+    }
+
+    if (attackType === "orbit") {
+      ensureWeaponOrbital(run);
+      return;
+    }
+
+    if (attackType === "chain") {
+      attackWithChain(run, nearest, weapon);
+      return;
+    }
+
+    if (attackType === "mine") {
+      attackWithMine(run, weapon);
+      return;
+    }
+
+    if (attackType === "wave") {
+      attackWithWave(run, nearest, weapon);
+      return;
+    }
+
+    if (run.projectiles.length >= maxProjectiles) {
       return;
     }
 
@@ -348,7 +557,8 @@
 
   function updateAttack(run, delta) {
     const minCooldown = Math.max(0.01, safeNumber((Data.limits || {}).minAttackCooldown, 0.12));
-    const cooldown = Math.max(minCooldown, safeNumber(run.player.attackCooldown, 0.55));
+    const weapon = getWeapon(run);
+    const cooldown = Math.max(minCooldown, safeNumber(run.player.attackCooldown, 0.55) * safeNumber(weapon.cooldownMultiplier, 1));
 
     run.attackTimer = safeNumber(run.attackTimer, 0) - delta;
     if (run.attackTimer <= 0) {
@@ -377,6 +587,35 @@
         projectile.y > height + padding
       ) {
         run.projectiles.splice(i, 1);
+      }
+    }
+  }
+
+  function updateEffects(run, delta) {
+    const effects = run.effects || [];
+
+    for (let i = effects.length - 1; i >= 0; i -= 1) {
+      const effect = effects[i];
+      effect.life = safeNumber(effect.life, 0) - delta;
+
+      if (effect.type === "mine" && !effect.triggered) {
+        effect.armTimer = Math.max(0, safeNumber(effect.armTimer, 0) - delta);
+        if (effect.armTimer <= 0) {
+          effect.triggered = true;
+          effect.type = "explosion";
+          effect.life = 0.28;
+          for (let j = run.enemies.length - 1; j >= 0; j -= 1) {
+            const enemy = run.enemies[j];
+            const hitRadius = safeNumber(effect.radius, 48) + safeNumber(enemy.radius, 8);
+            if (distanceSquared(effect, enemy) <= hitRadius * hitRadius) {
+              damageEnemy(run, enemy, safeNumber(effect.damage, 12));
+            }
+          }
+        }
+      }
+
+      if (effect.life <= 0) {
+        effects.splice(i, 1);
       }
     }
   }
@@ -513,6 +752,27 @@
     run.kills = Math.max(0, Math.floor(safeNumber(run.kills, 0))) + 1;
     dropGem(run, enemy);
 
+    if (enemy.elite) {
+      run.eliteKills = Math.max(0, Math.floor(safeNumber(run.eliteKills, 0))) + 1;
+      if (enemy.eliteType === "splitter") {
+        spawnEnemyNear(run, "normal", safeNumber(enemy.x, 0) - 12, safeNumber(enemy.y, 0));
+        spawnEnemyNear(run, "normal", safeNumber(enemy.x, 0) + 12, safeNumber(enemy.y, 0));
+      } else if (enemy.eliteType === "volatile") {
+        pushEffect(run, {
+          type: "explosion",
+          x: safeNumber(enemy.x, 0),
+          y: safeNumber(enemy.y, 0),
+          radius: 46,
+          life: 0.28
+        });
+        for (let i = run.enemies.length - 1; i >= 0; i -= 1) {
+          if (run.enemies[i] !== enemy && distanceSquared(enemy, run.enemies[i]) <= 46 * 46) {
+            run.enemies[i].hp = Math.max(1, safeNumber(run.enemies[i].hp, 1) - Math.max(6, safeNumber(run.player && run.player.damage, 12) * 0.75));
+          }
+        }
+      }
+    }
+
     if (enemy.isBoss) {
       run.bossDefeated = true;
       AS.State.finishRun(true);
@@ -613,7 +873,7 @@
 
         if (enemy.orbitalHitTimer <= 0 && distanceSquared(orbital, enemy) <= hitRadius * hitRadius) {
           enemy.orbitalHitTimer = 0.45;
-          damageEnemy(run, enemy, Math.max(2, safeNumber(run.player.damage, 12) * 0.65 * safeNumber(player.orbitalDamageMultiplier, 1)));
+          damageEnemy(run, enemy, Math.max(2, safeNumber(orbital.damage, safeNumber(run.player.damage, 12) * 0.65) * safeNumber(player.orbitalDamageMultiplier, 1)));
         }
       }
     }
@@ -671,6 +931,18 @@
         continue;
       }
 
+      if (!boss.phaseTwo && safeNumber(boss.hp, 0) <= safeNumber(boss.maxHp, 1) * 0.5) {
+        boss.phaseTwo = true;
+        boss.baseSpeed = safeNumber(boss.baseSpeed, boss.speed) * 1.15;
+        boss.speed = safeNumber(boss.speed, boss.baseSpeed) * 1.12;
+        boss.color = "#ff5f9a";
+        boss.phaseCooldownMultiplier = 0.78;
+        boss.summonTimer = Math.min(safeNumber(boss.summonTimer, safeNumber(pattern.summonCooldown, 7)), 2.5);
+        boss.chargeTimer = Math.min(safeNumber(boss.chargeTimer, safeNumber(pattern.chargeCooldown, 6.6)), 2);
+        run.message = "보스 2페이즈";
+        run.messageTimer = 1.2;
+      }
+
       boss.chargeTimer = Math.max(0, safeNumber(boss.chargeTimer, safeNumber(pattern.chargeCooldown, 7)) - delta);
       boss.summonTimer = Math.max(0, safeNumber(boss.summonTimer, safeNumber(pattern.summonCooldown, 8)) - delta);
       boss.auraTickTimer = Math.max(0, safeNumber(boss.auraTickTimer, safeNumber(pattern.auraTick, 1.2)) - delta);
@@ -685,7 +957,7 @@
         boss.chargeActiveTimer = Math.max(0, boss.chargeActiveTimer - delta);
         if (boss.chargeActiveTimer <= 0) {
           boss.speed = safeNumber(boss.baseSpeed, boss.speed);
-          boss.chargeTimer = safeNumber(pattern.chargeCooldown, 7);
+          boss.chargeTimer = safeNumber(pattern.chargeCooldown, 7) * safeNumber(boss.phaseCooldownMultiplier, 1);
         }
       } else if (boss.chargeTimer <= 0) {
         dir = normalize(safeNumber(player.x, 0) - safeNumber(boss.x, 0), safeNumber(player.y, 0) - safeNumber(boss.y, 0));
@@ -702,7 +974,7 @@
           const angle = Math.PI * 2 * (s / Math.max(1, summonCount)) + Math.random() * 0.4;
           spawnEnemyNear(run, "normal", safeNumber(boss.x, width / 2) + Math.cos(angle) * 48, safeNumber(boss.y, height / 2) + Math.sin(angle) * 48);
         }
-        boss.summonTimer = safeNumber(pattern.summonCooldown, 8);
+        boss.summonTimer = safeNumber(pattern.summonCooldown, 8) * safeNumber(boss.phaseCooldownMultiplier, 1);
       }
 
       if (boss.auraTickTimer <= 0) {
@@ -750,6 +1022,21 @@
     const maxEnemies = Math.max(1, safeNumber(game.maxEnemies, 80));
     const maxProjectiles = Math.max(1, safeNumber(game.maxProjectiles, 80));
     const maxGems = Math.max(1, safeNumber(game.maxGems, 120));
+    const maxEffects = Math.max(1, safeNumber(game.maxEffects, 48));
+    const maxMines = Math.max(1, safeNumber(game.maxMines, 30));
+
+    if (!run.enemies) {
+      run.enemies = [];
+    }
+    if (!run.projectiles) {
+      run.projectiles = [];
+    }
+    if (!run.gems) {
+      run.gems = [];
+    }
+    if (!run.effects) {
+      run.effects = [];
+    }
 
     while (run.enemies.length > maxEnemies) {
       run.enemies.shift();
@@ -759,6 +1046,14 @@
     }
     while (run.gems.length > maxGems) {
       run.gems.shift();
+    }
+    while ((run.effects || []).length > maxEffects) {
+      run.effects.shift();
+    }
+    if (run.mines) {
+      while (run.mines.length > maxMines) {
+        run.mines.shift();
+      }
     }
   }
 
@@ -830,6 +1125,49 @@
     return true;
   }
 
+  function addTags(counts, tags, amount) {
+    const list = Array.isArray(tags) ? tags : [];
+    const value = Math.max(1, Math.floor(safeNumber(amount, 1)));
+
+    for (let i = 0; i < list.length; i += 1) {
+      counts[list[i]] = Math.max(0, safeNumber(counts[list[i]], 0)) + value;
+    }
+  }
+
+  function collectTagCounts(run) {
+    const counts = {};
+    const abilityLevels = run.abilityLevels || {};
+    const abilities = Data.abilities || [];
+    const relics = Data.relics || [];
+    const weapon = getWeapon(run);
+
+    addTags(counts, weapon.tags, 1);
+
+    for (let i = 0; i < abilities.length; i += 1) {
+      const ability = abilities[i];
+      if (safeNumber(abilityLevels[ability.id], 0) > 0 || (run.evolutions && run.evolutions[ability.id])) {
+        addTags(counts, ability.tags, 1);
+      }
+    }
+
+    for (let i = 0; i < (run.relics || []).length; i += 1) {
+      const relic = findById(relics, run.relics[i].id, "");
+      addTags(counts, relic.tags, 1);
+    }
+
+    return counts;
+  }
+
+  function hasAnyTagCount(counts, tags) {
+    let total = 0;
+
+    for (let i = 0; i < tags.length; i += 1) {
+      total += safeNumber(counts[tags[i]], 0);
+    }
+
+    return total;
+  }
+
   function applyRelicEffect(run, relic) {
     const player = run.player;
     const effect = relic.effect || {};
@@ -867,6 +1205,7 @@
     const hasNova = run.evolutions && run.evolutions.abyssNova;
     const hasHpSource = hasRelic(run, "bloodCore") || hasRelic(run, "brokenShield") || hasRelic(run, "voidHand") || safeNumber(abilityLevels.maxHpUp, 0) >= 2 || safeNumber(player.maxHp, 0) >= 130;
     const hasDamageSource = hasRelic(run, "sharpHeart") || hasRelic(run, "abyssPact") || safeNumber(abilityLevels.damageUp, 0) > 0 || safeNumber(player.damage, 0) >= 24;
+    const tagCounts = collectTagCounts(run);
 
     if (hasPiercing && hasSplit && addBuildBonus(run, "bulletBuild", "탄환 빌드")) {
       player.projectileRadius = Math.max(1, safeNumber(player.projectileRadius, 1) + 1);
@@ -881,6 +1220,38 @@
     if (hasNova && hasDamageSource && addBuildBonus(run, "explosionBuild", "폭발 빌드")) {
       player.novaRadiusBonus = safeNumber(player.novaRadiusBonus, 0) + 15;
       player.novaCooldownBonus = safeNumber(player.novaCooldownBonus, 0) - 0.5;
+    }
+
+    if (hasAnyTagCount(tagCounts, ["bullet", "projectile"]) >= 3 && addBuildBonus(run, "bulletExpert", "탄환 전문가")) {
+      player.projectileSpeed = Math.max(0, safeNumber(player.projectileSpeed, 0) + 28);
+      player.projectileRadius = Math.max(1, safeNumber(player.projectileRadius, 1) + 1);
+    }
+
+    if (hasAnyTagCount(tagCounts, ["explosion"]) >= 3 && addBuildBonus(run, "explosionAddict", "폭발 중독")) {
+      player.novaRadiusBonus = safeNumber(player.novaRadiusBonus, 0) + 18;
+      player.novaCooldownBonus = safeNumber(player.novaCooldownBonus, 0) - 0.35;
+      player.damage = Math.max(1, safeNumber(player.damage, 1) + 2);
+    }
+
+    if (hasAnyTagCount(tagCounts, ["survival", "shield", "hp"]) >= 4 && addBuildBonus(run, "unyieldingSurvivor", "불굴의 생존자")) {
+      player.damageTakenMultiplier = Math.max(0.1, safeNumber(player.damageTakenMultiplier, 1) * 0.9);
+      player.maxHp = Math.max(1, safeNumber(player.maxHp, 1) + 18);
+      player.hp = Math.min(player.maxHp, safeNumber(player.hp, 1) + 18);
+    }
+
+    if (hasAnyTagCount(tagCounts, ["lightning", "speed", "chain"]) >= 3 && addBuildBonus(run, "lightningChaser", "번개 추격자")) {
+      player.speed = Math.max(0, safeNumber(player.speed, 0) + 14);
+      player.attackCooldown = Math.max(0.12, safeNumber(player.attackCooldown, 0.5) - 0.04);
+    }
+
+    if (hasAnyTagCount(tagCounts, ["abyss"]) >= 3 && addBuildBonus(run, "abyssContractor", "심연 계약자")) {
+      player.damage = Math.max(1, safeNumber(player.damage, 1) * 1.12);
+      player.damageTakenMultiplier = Math.max(0.1, safeNumber(player.damageTakenMultiplier, 1) * 1.06);
+    }
+
+    if (hasAnyTagCount(tagCounts, ["growth", "pickup", "exp"]) >= 3 && addBuildBonus(run, "growthCollector", "성장 수집가")) {
+      player.pickupRadius = Math.max(1, safeNumber(player.pickupRadius, 1) + 14);
+      player.expMultiplier = Math.max(0.1, safeNumber(player.expMultiplier, 1) * 1.08);
     }
   }
 
@@ -913,6 +1284,10 @@
 
       run.time = Math.max(0, safeNumber(run.time, 0) + safeDelta);
       run.remainingTime = Math.max(0, safeNumber(run.runDuration, safeNumber(game.runDuration, 180)) - run.time);
+      if (!run.initialBuildChecked) {
+        run.initialBuildChecked = true;
+        updateBuildBonuses(run);
+      }
 
       movePlayer(run, safeDelta);
       updateSpawning(run, safeDelta);
@@ -922,6 +1297,7 @@
         return;
       }
       updateAttack(run, safeDelta);
+      updateEffects(run, safeDelta);
       updateProjectiles(run, safeDelta);
       handleProjectileHits(run);
       if (run.mode !== (states.running || "running")) {
