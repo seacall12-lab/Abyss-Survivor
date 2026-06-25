@@ -1,1 +1,15 @@
+2026-06
 
+- 프로젝트 시작
+- PROJECT_SPEC.md 작성
+- index.html, style.css 작성
+- data.js, state.js 작성
+- game.js, render.js 작성
+- ui.js, main.js 작성
+- README.md, version-up.txt, development-history.txt 작성
+- Abyss Survivor v0.1 최소 플레이 버전 완성
+- v0.1 안정화: 입력 처리, 상태 전환, 보석 획득감, 모바일 화면 표시 보정
+- v0.3 통합 업데이트: 진화 능력 4종, 보스 패턴, 능력 선택 UI 개선, 밸런스 2차 조정
+- v0.4~v0.5 통합 업데이트: 클래스 3종, 구역 3종, 구역별 보스, 심연 조각 보상, 영구 성장, 시간대별 웨이브, 저장 데이터 v2 확장
+- v0.7~v0.9 통합 업데이트: 유물 시스템, 빌드 조합 보너스, 도전 모드 4종, 런 결과 요약 개선, 저장 데이터 v3 확장, 모바일 UI 밀도 정리
+- v1.0 Final 마감: 전체 기능 연결 점검, 아이콘 중심 HUD/카드 UI 정리, 결과 요약 정리, 저장 안정성 보강, 최종 문서화
