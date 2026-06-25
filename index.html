@@ -1,1 +1,106 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Abyss Survivor</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <header class="hud" aria-label="게임 상태">
+      <div class="hud-item">
+        <span class="hud-label">♥</span>
+        <span id="healthText" class="hud-value">100 / 100</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">Lv</span>
+        <span id="levelText" class="hud-value">1</span>
+      </div>
+      <div class="hud-item hud-exp">
+        <span class="hud-label">◆</span>
+        <span id="expText" class="hud-value">0 / 10</span>
+        <div class="exp-bar" aria-hidden="true">
+          <div id="expFill" class="exp-fill"></div>
+        </div>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">⏱</span>
+        <span id="timeText" class="hud-value">03:00</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">☠</span>
+        <span id="killText" class="hud-value">0</span>
+      </div>
+    </header>
 
+    <main class="game-area">
+      <canvas id="gameCanvas" width="360" height="560" aria-label="Abyss Survivor 게임 화면"></canvas>
+
+      <section id="overlay" class="overlay is-visible" aria-live="polite">
+        <div id="startPanel" class="overlay-panel">
+          <h1>Abyss Survivor</h1>
+          <p>3분 생존 · 보스 처치</p>
+          <button id="startButton" class="primary-button" type="button">▶ 시작</button>
+        </div>
+
+        <div id="levelUpPanel" class="overlay-panel is-hidden">
+          <h2>능력 선택</h2>
+          <p>하나를 선택하세요.</p>
+          <div id="abilityList" class="ability-list">
+            <button class="ability-button" type="button">공격력 증가</button>
+            <button class="ability-button" type="button">공격 속도 증가</button>
+            <button class="ability-button" type="button">이동 속도 증가</button>
+          </div>
+        </div>
+
+        <div id="gameOverPanel" class="overlay-panel is-hidden">
+          <h2>게임 오버</h2>
+          <dl class="result-list">
+            <div>
+              <dt>⏱</dt>
+              <dd id="gameOverTimeText">00:00</dd>
+            </div>
+            <div>
+              <dt>☠</dt>
+              <dd id="gameOverKillText">0</dd>
+            </div>
+          </dl>
+          <button id="retryButton" class="primary-button" type="button">↻ 재시작</button>
+        </div>
+
+        <div id="clearPanel" class="overlay-panel is-hidden">
+          <h2>클리어</h2>
+          <dl class="result-list">
+            <div>
+              <dt>⏱</dt>
+              <dd id="clearTimeText">03:00</dd>
+            </div>
+            <div>
+              <dt>☠</dt>
+              <dd id="clearKillText">0</dd>
+            </div>
+            <div>
+              <dt>Lv</dt>
+              <dd id="clearLevelText">1</dd>
+            </div>
+          </dl>
+          <button id="clearRetryButton" class="primary-button" type="button">↻ 재시작</button>
+        </div>
+      </section>
+    </main>
+
+    <footer class="control-bar" aria-label="게임 조작">
+      <button id="pauseButton" class="control-button" type="button" aria-label="일시정지">Ⅱ</button>
+      <button id="restartButton" class="control-button" type="button" aria-label="재시작">↻</button>
+    </footer>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="state.js"></script>
+  <script src="game.js"></script>
+  <script src="render.js"></script>
+  <script src="ui.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
