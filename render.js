@@ -65,6 +65,45 @@
     }
   }
 
+  function drawEffects(run) {
+    const effects = run.effects || [];
+
+    for (let i = 0; i < effects.length; i += 1) {
+      const effect = effects[i];
+      const life = Math.max(0, safeNumber(effect.life, 0));
+
+      if (effect.type === "lightning") {
+        ctx.strokeStyle = "rgba(180, 235, 255, " + Math.min(1, 0.35 + life * 3) + ")";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(safeNumber(effect.fromX, 0), safeNumber(effect.fromY, 0));
+        ctx.lineTo(safeNumber(effect.toX, 0), safeNumber(effect.toY, 0));
+        ctx.stroke();
+      } else if (effect.type === "mine") {
+        ctx.strokeStyle = "rgba(213, 239, 115, 0.55)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(effect.x, effect.y, Math.max(8, safeNumber(effect.radius, 48) * 0.35), 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (effect.type === "explosion") {
+        ctx.strokeStyle = "rgba(255, 190, 95, " + Math.min(0.85, 0.25 + life * 2) + ")";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(effect.x, effect.y, Math.max(10, safeNumber(effect.radius, 46) * (1.15 - life)), 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (effect.type === "wave") {
+        const dirX = safeNumber(effect.dirX, 1);
+        const dirY = safeNumber(effect.dirY, 0);
+        const angle = Math.atan2(dirY, dirX);
+        ctx.strokeStyle = "rgba(143, 216, 255, 0.65)";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(effect.x, effect.y, safeNumber(effect.radius, 118), angle - 0.7, angle + 0.7);
+        ctx.stroke();
+      }
+    }
+  }
+
   function drawOrbitals(run) {
     const orbitals = run.orbitals || [];
 
@@ -98,6 +137,14 @@
 
       drawCircle(enemy.x, enemy.y, radius, enemy.color || "#6bb7d6");
 
+      if (enemy.elite) {
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.rect(enemy.x - radius - 3, enemy.y - radius - 3, (radius + 3) * 2, (radius + 3) * 2);
+        ctx.stroke();
+      }
+
       if (enemy.isBoss) {
         if (safeNumber(enemy.auraRadius, 0) > 0) {
           ctx.strokeStyle = enemy.color || "rgba(216, 92, 122, 0.24)";
@@ -109,7 +156,7 @@
           ctx.globalAlpha = 1;
         }
 
-        ctx.strokeStyle = safeNumber(enemy.chargeActiveTimer, 0) > 0 || safeNumber(enemy.chargePrepareTimer, 0) > 0 ? "#ffffff" : "#ffe28a";
+        ctx.strokeStyle = enemy.phaseTwo ? "#ff9abd" : (safeNumber(enemy.chargeActiveTimer, 0) > 0 || safeNumber(enemy.chargePrepareTimer, 0) > 0 ? "#ffffff" : "#ffe28a");
         ctx.lineWidth = safeNumber(enemy.chargeActiveTimer, 0) > 0 ? 5 : 3;
         ctx.beginPath();
         ctx.arc(enemy.x, enemy.y, radius + (safeNumber(enemy.chargePrepareTimer, 0) > 0 ? 9 : 5), 0, Math.PI * 2);
@@ -172,6 +219,7 @@
 
       drawBackground();
       drawGems(run);
+      drawEffects(run);
       drawProjectiles(run);
       drawEnemies(run);
       drawOrbitals(run);
