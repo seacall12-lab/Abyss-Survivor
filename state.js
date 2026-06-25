@@ -32,21 +32,40 @@
     return Object.assign({}, source || {});
   }
 
+  function countCompletedMissions(missions) {
+    const completed = missions && missions.completed ? missions.completed : {};
+    let count = 0;
+    let key;
+
+    for (key in completed) {
+      if (Object.prototype.hasOwnProperty.call(completed, key) && completed[key]) {
+        count += 1;
+      }
+    }
+
+    return count;
+  }
+
   function createDefaultSave() {
     return {
-      version: 3,
+      version: 4,
       bestTime: 0,
       bestKills: 0,
       totalRuns: 0,
       totalClears: 0,
       shards: 0,
       selectedClassId: "wanderer",
+      selectedWeaponId: "abyssBullet",
       selectedZoneId: "riftGate",
       selectedChallengeId: "normal",
       upgrades: {
         vitality: 0,
         power: 0,
         growth: 0
+      },
+      missions: {
+        completed: {},
+        progress: {}
       }
     };
   }
@@ -58,6 +77,32 @@
       vitality: Math.min(10, safeInteger(source.vitality, 0)),
       power: Math.min(10, safeInteger(source.power, 0)),
       growth: Math.min(10, safeInteger(source.growth, 0))
+    };
+  }
+
+  function sanitizeMissionMap(missions) {
+    const source = missions && typeof missions === "object" ? missions : {};
+    const completedSource = source.completed && typeof source.completed === "object" ? source.completed : {};
+    const progressSource = source.progress && typeof source.progress === "object" ? source.progress : {};
+    const completed = {};
+    const progress = {};
+    let key;
+
+    for (key in completedSource) {
+      if (Object.prototype.hasOwnProperty.call(completedSource, key) && completedSource[key]) {
+        completed[key] = true;
+      }
+    }
+
+    for (key in progressSource) {
+      if (Object.prototype.hasOwnProperty.call(progressSource, key)) {
+        progress[key] = safeInteger(progressSource[key], 0);
+      }
+    }
+
+    return {
+      completed: completed,
+      progress: progress
     };
   }
 
@@ -73,9 +118,11 @@
       totalClears: safeInteger(source.totalClears, base.totalClears),
       shards: safeInteger(source.shards, base.shards),
       selectedClassId: findById(Data.classes, typeof source.selectedClassId === "string" ? source.selectedClassId : base.selectedClassId, "wanderer").id || "wanderer",
+      selectedWeaponId: findById(Data.weapons, typeof source.selectedWeaponId === "string" ? source.selectedWeaponId : base.selectedWeaponId, "abyssBullet").id || "abyssBullet",
       selectedZoneId: findById(Data.zones, typeof source.selectedZoneId === "string" ? source.selectedZoneId : base.selectedZoneId, "riftGate").id || "riftGate",
       selectedChallengeId: findById(Data.challenges, typeof source.selectedChallengeId === "string" ? source.selectedChallengeId : base.selectedChallengeId, "normal").id || "normal",
-      upgrades: sanitizeUpgradeMap(source.upgrades)
+      upgrades: sanitizeUpgradeMap(source.upgrades),
+      missions: sanitizeMissionMap(source.missions)
     };
   }
 
@@ -165,6 +212,7 @@
     return {
       mode: states.title || "title",
       selectedClassId: save.selectedClassId || "wanderer",
+      selectedWeaponId: save.selectedWeaponId || "abyssBullet",
       selectedZoneId: save.selectedZoneId || "riftGate",
       selectedChallengeId: save.selectedChallengeId || "normal",
       runDuration: runDuration,
@@ -188,8 +236,13 @@
       bossSpawned: false,
       bossDefeated: false,
       finished: false,
+      rewardGranted: false,
+      missionChecked: false,
       shardReward: 0,
       baseShardReward: 0,
+      missionShardReward: 0,
+      completedMissionIds: [],
+      eliteKills: 0,
       relics: [],
       relicChoices: [],
       relicOfferCount: 0,
@@ -207,6 +260,7 @@
       projectiles: [],
       gems: [],
       orbitals: [],
+      effects: [],
 
       spawnTimer: 0,
       attackTimer: 0,
@@ -228,6 +282,76 @@
     }
 
     return false;
+  }
+
+  function countRunEvolutions(run) {
+    const evolutions = run && run.evolutions ? run.evolutions : {};
+    let count = 0;
+    let key;
+
+    for (key in evolutions) {
+      if (Object.prototype.hasOwnProperty.call(evolutions, key) && evolutions[key]) {
+        count += 1;
+      }
+    }
+
+    return count;
+  }
+
+  function getMissionValue(run, missionId, shardReward, isClear) {
+    if (missionId === "runKills100") {
+      return safeInteger(run.kills, 0);
+    }
+    if (missionId === "bossKill") {
+      return isClear || run.bossDefeated ? 1 : 0;
+    }
+    if (missionId === "twoEvolutions") {
+      return countRunEvolutions(run);
+    }
+    if (missionId === "twoRelics") {
+      return (run.relics || []).length;
+    }
+    if (missionId === "earn30Shards") {
+      return safeInteger(shardReward, 0);
+    }
+    if (missionId === "challenge120") {
+      return run.selectedChallengeId !== "normal" ? Math.floor(safeNumber(run.time, 0)) : 0;
+    }
+    if (missionId === "eliteKills3") {
+      return safeInteger(run.eliteKills, 0);
+    }
+    return 0;
+  }
+
+  function applyMissionRewards(save, run, shardReward, isClear) {
+    const missions = Array.isArray(Data.missions) ? Data.missions : [];
+    const missionState = sanitizeMissionMap(save.missions);
+    let reward = 0;
+
+    if (run.missionChecked) {
+      return 0;
+    }
+
+    run.missionChecked = true;
+    run.completedMissionIds = [];
+
+    for (let i = 0; i < missions.length; i += 1) {
+      const mission = missions[i];
+      const target = Math.max(1, safeInteger(mission.target, 1));
+      const value = Math.min(target, getMissionValue(run, mission.id, shardReward, isClear));
+      missionState.progress[mission.id] = Math.max(safeInteger(missionState.progress[mission.id], 0), value);
+
+      if (!missionState.completed[mission.id] && value >= target) {
+        missionState.completed[mission.id] = true;
+        reward += safeInteger(mission.reward, 0);
+        run.completedMissionIds.push(mission.id);
+      }
+    }
+
+    save.missions = missionState;
+    run.missionShardReward = Math.max(0, reward);
+    run.missionCompletedCount = countCompletedMissions(missionState);
+    return reward;
   }
 
   AS.State = {
@@ -339,17 +463,20 @@
       const clearReward = isClear ? 20 : 0;
       const baseShardReward = Math.max(0, safeInteger(killReward + timeReward + clearReward, 0));
       const shardReward = Math.max(0, Math.floor(baseShardReward * Math.max(0, safeNumber(run.rewardMultiplier, 1))));
+      let missionReward = 0;
 
-      if (run.finished) {
+      if (run.rewardGranted) {
         return save;
       }
 
       run.finished = true;
+      run.rewardGranted = true;
       run.baseShardReward = baseShardReward;
       run.shardReward = shardReward;
+      missionReward = applyMissionRewards(save, run, shardReward, isClear);
       save.bestTime = Math.max(safeNumber(save.bestTime, 0), runTime);
       save.bestKills = Math.max(safeInteger(save.bestKills, 0), runKills);
-      save.shards = safeInteger(save.shards, 0) + shardReward;
+      save.shards = safeInteger(save.shards, 0) + shardReward + missionReward;
 
       if (isClear) {
         save.totalClears = safeInteger(save.totalClears, 0) + 1;
@@ -365,6 +492,13 @@
     setSelectedClass: function (classId) {
       const save = this.getSave();
       save.selectedClassId = findById(Data.classes, classId, "wanderer").id || "wanderer";
+      this.writeSave();
+      return save;
+    },
+
+    setSelectedWeapon: function (weaponId) {
+      const save = this.getSave();
+      save.selectedWeaponId = findById(Data.weapons, weaponId, "abyssBullet").id || "abyssBullet";
       this.writeSave();
       return save;
     },
