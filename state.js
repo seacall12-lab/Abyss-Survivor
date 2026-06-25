@@ -152,6 +152,7 @@
   }
 
   function createPlayer() {
+    const game = Data.game || {};
     const fallbackPlayer = {
       x: 180,
       y: 280,
@@ -176,10 +177,12 @@
     const damage = (safeNumber(source.damage, fallbackPlayer.damage) * safeNumber(selectedClass.damageMultiplier, 1) + upgrades.power) * safeNumber(modifiers.playerDamageMultiplier, 1);
     const attackCooldown = safeNumber(source.attackCooldown, fallbackPlayer.attackCooldown) * safeNumber(selectedClass.attackCooldownMultiplier, 1);
     const pickupRadius = safeNumber(source.pickupRadius, fallbackPlayer.pickupRadius) + safeNumber(selectedClass.pickupRadiusBonus, 0) + upgrades.growth * 3;
+    const worldWidth = Math.max(safeNumber(game.width, 360), safeNumber(game.worldWidth, safeNumber(game.width, 360)));
+    const worldHeight = Math.max(safeNumber(game.height, 560), safeNumber(game.worldHeight, safeNumber(game.height, 560)));
 
     return {
-      x: safeNumber(source.x, fallbackPlayer.x),
-      y: safeNumber(source.y, fallbackPlayer.y),
+      x: worldWidth / 2,
+      y: worldHeight / 2,
       radius: Math.max(1, safeNumber(source.radius, fallbackPlayer.radius)),
       maxHp: maxHp,
       hp: maxHp,
@@ -195,6 +198,24 @@
       gemHealChance: 0,
       gemHealAmount: 0,
       orbitalDamageMultiplier: 1,
+      lifeStealOnKill: Math.max(0, safeNumber(selectedClass.lifeStealOnKill, 0)),
+      killHealMultiplier: 1,
+      mineBonus: Math.max(0, safeInteger(selectedClass.mineBonus, 0)),
+      chainBonus: Math.max(0, safeInteger(selectedClass.chainBonus, 0)),
+      abyssPowerBonus: Math.max(0, safeNumber(selectedClass.abyssPowerBonus, 0)),
+      effectDurationMultiplier: Math.max(0.1, safeNumber(selectedClass.effectDurationMultiplier, 1)),
+      meleeDamageMultiplier: 1,
+      lineDamageMultiplier: 1,
+      spreadDamageMultiplier: 1,
+      chainDamageMultiplier: 1,
+      explosionDamageMultiplier: 1,
+      waveDamageMultiplier: 1,
+      mineRadiusMultiplier: 1,
+      explosionRadiusMultiplier: 1,
+      waveRadiusMultiplier: 1,
+      eliteDamageMultiplier: 1,
+      bossDamageMultiplier: 1,
+      projectilePierceBonus: 0,
       novaRadiusBonus: 0,
       novaCooldownBonus: 0
     };
@@ -204,10 +225,22 @@
     const game = Data.game || {};
     const save = AS.State && AS.State.getSave ? AS.State.getSave() : sanitizeSave(null);
     const challenge = getChallenge(save);
+    const zone = findById(Data.zones, save.selectedZoneId, "riftGate");
     const modifiers = getChallengeModifiers(save);
     const runDuration = Math.max(1, safeNumber(modifiers.runDuration, safeNumber(game.runDuration, 180)));
     const bossSpawnTime = Math.max(1, safeNumber(modifiers.bossSpawnTime, safeNumber(game.bossSpawnTime, 120)));
-    const rewardMultiplier = Math.max(0, safeNumber(challenge.rewardMultiplier, 1));
+    const rewardMultiplier = Math.max(0, safeNumber(challenge.rewardMultiplier, 1) * safeNumber(zone.rewardMultiplier, 1));
+    const viewportWidth = Math.max(1, safeNumber(game.width, 360));
+    const viewportHeight = Math.max(1, safeNumber(game.height, 560));
+    const worldWidth = Math.max(viewportWidth, safeNumber(game.worldWidth, viewportWidth));
+    const worldHeight = Math.max(viewportHeight, safeNumber(game.worldHeight, viewportHeight));
+    const player = createPlayer();
+    const camera = {
+      x: Math.max(0, Math.min(worldWidth - viewportWidth, safeNumber(player.x, worldWidth / 2) - viewportWidth / 2)),
+      y: Math.max(0, Math.min(worldHeight - viewportHeight, safeNumber(player.y, worldHeight / 2) - viewportHeight / 2)),
+      width: viewportWidth,
+      height: viewportHeight
+    };
 
     return {
       mode: states.title || "title",
@@ -219,6 +252,11 @@
       bossSpawnTime: bossSpawnTime,
       rewardMultiplier: rewardMultiplier,
       challengeModifiers: copyObject(modifiers),
+      world: {
+        width: worldWidth,
+        height: worldHeight
+      },
+      camera: camera,
       time: 0,
       remainingTime: runDuration,
       kills: 0,
@@ -227,6 +265,7 @@
       expToNext: 20,
       pendingAbilities: [],
       abilityLevels: {},
+      weaponGrowth: {},
       evolutions: {
         piercingShot: false,
         splitShot: false,
@@ -248,7 +287,7 @@
       relicOfferCount: 0,
       buildBonuses: [],
 
-      player: createPlayer(),
+      player: player,
       input: {
         active: false,
         moveX: 0,
@@ -261,6 +300,7 @@
       gems: [],
       orbitals: [],
       effects: [],
+      damageTexts: [],
 
       spawnTimer: 0,
       attackTimer: 0,
