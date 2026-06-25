@@ -8,6 +8,10 @@
   let pointerStart = null;
   let lastAbilitySignature = "";
   let lastSetupSignature = "";
+  let lastHudSignature = "";
+  let lastOverlaySignature = "";
+  const pointerDeadZone = 10;
+  const pointerMaxDistance = 70;
 
   function findElement() {
     for (let i = 0; i < arguments.length; i += 1) {
@@ -56,6 +60,9 @@
     if (elements.classPanel) {
       elements.classPanel.style.display = displayValue;
     }
+    if (elements.weaponPanel) {
+      elements.weaponPanel.style.display = displayValue;
+    }
     if (elements.zonePanel) {
       elements.zonePanel.style.display = displayValue;
     }
@@ -64,6 +71,9 @@
     }
     if (elements.upgradePanel) {
       elements.upgradePanel.style.display = displayValue;
+    }
+    if (elements.missionPanel) {
+      elements.missionPanel.style.display = displayValue;
     }
   }
 
@@ -87,6 +97,11 @@
       riftGate: "◇",
       swampEdge: "≈",
       abyssCore: "✦",
+      abyssBullet: "●",
+      orbitBlade: "◌",
+      lightningChain: "ϟ",
+      voidMine: "✦",
+      wideWave: "≋",
       normal: "○",
       hungryAbyss: "☄",
       glassSurvivor: "△",
@@ -184,6 +199,27 @@
     return meta;
   }
 
+  function ensurePanelButton(panel, id, text, className) {
+    let button = document.getElementById(id);
+
+    if (!button && panel) {
+      button = document.createElement("button");
+      button.id = id;
+      button.type = "button";
+      button.className = className || "secondary-button";
+      button.textContent = text;
+      panel.appendChild(button);
+    }
+
+    return button;
+  }
+
+  function setElementVisible(element, visible) {
+    if (element) {
+      element.style.display = visible ? "" : "none";
+    }
+  }
+
   function renderSelectionPanel(panel, title, items, selectedId, onSelect) {
     if (!panel) {
       return;
@@ -278,6 +314,56 @@
     }
   }
 
+  function renderMissionPanel() {
+    const save = getSave();
+    const panel = elements.missionPanel;
+    const missions = Data.missions || [];
+    const completed = save.missions && save.missions.completed ? save.missions.completed : {};
+    const progress = save.missions && save.missions.progress ? save.missions.progress : {};
+    let completedCount = 0;
+
+    if (!panel) {
+      return;
+    }
+
+    for (let i = 0; i < missions.length; i += 1) {
+      if (completed[missions[i].id]) {
+        completedCount += 1;
+      }
+    }
+
+    panel.innerHTML = "";
+    const heading = document.createElement("strong");
+    const summary = document.createElement("span");
+    const list = document.createElement("div");
+    heading.className = "panel-title";
+    heading.textContent = "임무";
+    summary.className = "shard-count";
+    summary.textContent = "완료 " + completedCount + "/" + missions.length;
+    list.className = "choice-list";
+    panel.appendChild(heading);
+    panel.appendChild(summary);
+    panel.appendChild(list);
+
+    for (let i = 0; i < missions.length; i += 1) {
+      const mission = missions[i];
+      const row = document.createElement("div");
+      const icon = createIcon(completed[mission.id] ? "✓" : "◇", "choice-icon");
+      const body = document.createElement("span");
+      const name = document.createElement("strong");
+      const description = document.createElement("span");
+      row.className = completed[mission.id] ? "choice-button is-selected" : "choice-button";
+      body.className = "choice-body";
+      name.textContent = mission.name + " +" + safeInteger(mission.reward, 0);
+      description.textContent = completed[mission.id] ? "완료" : ("진행 " + safeInteger(progress[mission.id], 0) + "/" + safeInteger(mission.target, 1));
+      body.appendChild(name);
+      body.appendChild(description);
+      row.appendChild(icon);
+      row.appendChild(body);
+      list.appendChild(row);
+    }
+  }
+
   function updateMoveFromKeys(run) {
     const input = run.input;
     const keys = input.keys || {};
@@ -322,14 +408,15 @@
     dy = event.clientY - pointerStart.y;
     length = Math.sqrt(dx * dx + dy * dy);
 
-    if (!Number.isFinite(length) || length < 8) {
+    if (!Number.isFinite(length) || length < pointerDeadZone) {
       run.input.moveX = 0;
       run.input.moveY = 0;
       return;
     }
 
-    run.input.moveX = clamp(dx / length, -1, 1);
-    run.input.moveY = clamp(dy / length, -1, 1);
+    const power = clamp(0.72 + ((length - pointerDeadZone) / Math.max(1, pointerMaxDistance - pointerDeadZone)) * 0.28, 0, 1);
+    run.input.moveX = clamp((dx / length) * power, -1, 1);
+    run.input.moveY = clamp((dy / length) * power, -1, 1);
   }
 
   function clearPointerMove(run) {
@@ -367,12 +454,32 @@
       return;
     }
 
+    lastOverlaySignature = "";
+    lastHudSignature = "";
     AS.State.startRun();
     AS.UI.hideOverlay();
   }
 
   function restartGame() {
     startGame();
+  }
+
+  function returnToLobby() {
+    clearAllInput();
+    if (AS.State && AS.State.resetRun) {
+      AS.State.resetRun();
+    }
+    lastOverlaySignature = "";
+    lastHudSignature = "";
+    if (AS.UI && AS.UI.renderStartOptions) {
+      AS.UI.renderStartOptions();
+    }
+    if (AS.UI && AS.UI.showOverlay) {
+      AS.UI.showOverlay();
+    }
+    if (AS.UI && AS.UI.updateHud) {
+      AS.UI.updateHud(getRun());
+    }
   }
 
   function togglePause() {
@@ -459,6 +566,16 @@
       clearPointerMove(run);
     });
 
+    canvas.addEventListener("pointerleave", function (event) {
+      const run = getRun();
+
+      if (!run || !run.input || run.input.pointerId !== event.pointerId) {
+        return;
+      }
+
+      clearPointerMove(run);
+    });
+
     window.addEventListener("keydown", function (event) {
       const run = getRun();
 
@@ -519,7 +636,9 @@
         abilityList: findElement("abilityList"),
         startButton: findElement("startButton"),
         retryButton: findElement("retryButton"),
+        gameOverLobbyButton: findElement("gameOverLobbyButton"),
         clearRetryButton: findElement("clearRetryButton"),
+        clearLobbyButton: findElement("clearLobbyButton"),
         gameOverTime: findElement("gameOverTimeText"),
         gameOverKills: findElement("gameOverKillText"),
         clearTime: findElement("clearTimeText"),
@@ -528,9 +647,15 @@
       };
 
       elements.classPanel = ensurePanel("classPanel", "setup-panel");
+      elements.weaponPanel = ensurePanel("weaponPanel", "setup-panel");
       elements.zonePanel = ensurePanel("zonePanel", "setup-panel");
       elements.challengePanel = ensurePanel("challengePanel", "setup-panel");
       elements.upgradePanel = ensurePanel("upgradePanel", "setup-panel");
+      elements.missionPanel = ensurePanel("missionPanel", "setup-panel");
+      elements.pauseRestartButton = ensurePanelButton(elements.startPanel, "pauseRestartButton", "재시작", "secondary-button");
+      elements.pauseLobbyButton = ensurePanelButton(elements.startPanel, "pauseLobbyButton", "로비로", "secondary-button");
+      elements.gameOverLobbyButton = elements.gameOverLobbyButton || ensurePanelButton(elements.gameOverPanel, "gameOverLobbyButton", "로비로", "secondary-button");
+      elements.clearLobbyButton = elements.clearLobbyButton || ensurePanelButton(elements.clearPanel, "clearLobbyButton", "로비로", "secondary-button");
       elements.gameOverMeta = ensureResultMeta(elements.gameOverPanel, "gameOverMeta");
       elements.clearMeta = ensureResultMeta(elements.clearPanel, "clearMeta");
 
@@ -548,12 +673,22 @@
       const exp = Math.floor(Math.max(0, safeNumber(run && run.exp, 0)));
       const expToNext = Math.max(1, Math.floor(safeNumber(run && run.expToNext, 20)));
       const expRatio = clamp((exp / expToNext) * 100, 0, 100);
+      const timeValue = formatTime(run ? run.remainingTime : safeNumber((Data.game || {}).runDuration, 180));
+      const killValue = Math.max(0, Math.floor(safeNumber(run && run.kills, 0)));
+      const modeValue = run && run.mode ? run.mode : "";
+      const hudSignature = [hp, maxHp, exp, expToNext, timeValue, killValue, modeValue].join("|");
+
+      if (hudSignature === lastHudSignature) {
+        return;
+      }
+
+      lastHudSignature = hudSignature;
 
       setText(elements.health, "♥ " + hp + "/" + maxHp);
       setText(elements.level, "Lv " + String(Math.max(1, Math.floor(safeNumber(run && run.level, 1)))));
       setText(elements.expText, "◆ " + exp + "/" + expToNext);
-      setText(elements.time, formatTime(run ? run.remainingTime : safeNumber((Data.game || {}).runDuration, 180)));
-      setText(elements.kills, "☠ " + String(Math.max(0, Math.floor(safeNumber(run && run.kills, 0)))));
+      setText(elements.time, timeValue);
+      setText(elements.kills, "☠ " + String(killValue));
 
       if (elements.expFill) {
         elements.expFill.style.width = expRatio + "%";
@@ -562,6 +697,14 @@
       if (elements.pauseButton) {
         elements.pauseButton.textContent = run && run.mode === (states.paused || "paused") ? "▶" : "Ⅱ";
         elements.pauseButton.setAttribute("aria-label", run && run.mode === (states.paused || "paused") ? "계속하기" : "일시정지");
+      }
+
+      if (elements.restartButton) {
+        const isRunning = run && run.mode === (states.running || "running");
+        elements.restartButton.style.display = isRunning ? "none" : "";
+        if (elements.restartButton.parentElement) {
+          elements.restartButton.parentElement.classList.toggle("is-single", isRunning);
+        }
       }
     },
 
@@ -574,10 +717,35 @@
         elements.overlay.classList.toggle("is-visible", visible);
       }
 
+      const overlaySignature = [
+        mode,
+        run && run.pendingAbilities ? run.pendingAbilities.map(function (item) { return item.id; }).join(",") : "",
+        run ? Math.floor(safeNumber(run.time, 0)) : 0,
+        run ? safeInteger(run.kills, 0) : 0,
+        run ? safeInteger(run.level, 1) : 1,
+        run ? safeInteger(run.shardReward, 0) : 0,
+        run ? safeInteger(run.missionShardReward, 0) : 0,
+        run && run.completedMissionIds ? run.completedMissionIds.join(",") : ""
+      ].join("|");
+
+      if (overlaySignature === lastOverlaySignature) {
+        return;
+      }
+
+      lastOverlaySignature = overlaySignature;
+
+      if (mode !== (states.running || "running")) {
+        clearAllInput();
+      }
+
       setPanelVisible(elements.startPanel, mode === (states.title || "title") || mode === (states.paused || "paused"));
       setPanelVisible(elements.levelUpPanel, mode === (states.levelup || "levelup"));
       setPanelVisible(elements.gameOverPanel, mode === (states.gameover || "gameover"));
       setPanelVisible(elements.clearPanel, mode === (states.clear || "clear"));
+
+      if (mode === (states.running || "running")) {
+        return;
+      }
 
       if (mode === (states.paused || "paused") && elements.startPanel) {
         setSetupVisible(false);
@@ -592,6 +760,8 @@
         if (elements.startButton) {
           elements.startButton.textContent = "▶ 계속";
         }
+        setElementVisible(elements.pauseRestartButton, true);
+        setElementVisible(elements.pauseLobbyButton, true);
       } else if (elements.startPanel) {
         setSetupVisible(mode === (states.title || "title"));
         const title = elements.startPanel.querySelector("h1");
@@ -605,6 +775,8 @@
         if (elements.startButton) {
           elements.startButton.textContent = "▶ 시작";
         }
+        setElementVisible(elements.pauseRestartButton, false);
+        setElementVisible(elements.pauseLobbyButton, false);
         this.renderStartOptions();
       }
 
@@ -632,6 +804,7 @@
       if (elements.overlay) {
         elements.overlay.classList.remove("is-visible");
       }
+      lastOverlaySignature = "";
     },
 
     showLevelUp: function (abilities) {
@@ -686,12 +859,14 @@
       const save = getSave();
       const signature = [
         save.selectedClassId,
+        save.selectedWeaponId,
         save.selectedZoneId,
         save.selectedChallengeId,
         safeInteger(save.shards, 0),
         safeInteger(save.upgrades && save.upgrades.vitality, 0),
         safeInteger(save.upgrades && save.upgrades.power, 0),
-        safeInteger(save.upgrades && save.upgrades.growth, 0)
+        safeInteger(save.upgrades && save.upgrades.growth, 0),
+        JSON.stringify(save.missions || {})
       ].join("|");
 
       if (signature === lastSetupSignature) {
@@ -703,6 +878,12 @@
       renderSelectionPanel(elements.classPanel, "⬟ 클래스", Data.classes || [], save.selectedClassId || "wanderer", function (id) {
         if (AS.State && AS.State.setSelectedClass) {
           AS.State.setSelectedClass(id);
+        }
+      });
+
+      renderSelectionPanel(elements.weaponPanel, "● 시작 무기", Data.weapons || [], save.selectedWeaponId || "abyssBullet", function (id) {
+        if (AS.State && AS.State.setSelectedWeapon) {
+          AS.State.setSelectedWeapon(id);
         }
       });
 
@@ -719,6 +900,7 @@
       });
 
       renderUpgradePanel();
+      renderMissionPanel();
     },
 
     updateResultMeta: function (target, run) {
@@ -726,6 +908,7 @@
       const classItem = findById(Data.classes, run.selectedClassId || save.selectedClassId, "wanderer");
       const zoneItem = findById(Data.zones, run.selectedZoneId || save.selectedZoneId, "riftGate");
       const challengeItem = findById(Data.challenges, run.selectedChallengeId || save.selectedChallengeId, "normal");
+      const weaponItem = findById(Data.weapons, run.selectedWeaponId || save.selectedWeaponId, "abyssBullet");
       const relics = (run.relics || []).map(function (relic) {
         return relic.name;
       }).join(", ") || "없음";
@@ -736,8 +919,9 @@
 
       setText(target, [
         resultText + " · ⏱ " + formatTime(run.time) + " · ☠ " + safeInteger(run.kills, 0) + " · Lv " + safeInteger(run.level, 1),
-        "⬟ " + classItem.name + " / ◇ " + zoneItem.name + " / ○ " + challengeItem.name + " x" + safeNumber(run.rewardMultiplier, 1).toFixed(2),
-        "◆ +" + safeInteger(run.shardReward, 0) + " · 보유 " + safeInteger(save.shards, 0),
+        "⬟ " + classItem.name + " / ● " + weaponItem.name + " / ◇ " + zoneItem.name + " / ○ " + challengeItem.name + " x" + safeNumber(run.rewardMultiplier, 1).toFixed(2),
+        "◆ +" + safeInteger(run.shardReward, 0) + " · 임무 +" + safeInteger(run.missionShardReward, 0) + " · 보유 " + safeInteger(save.shards, 0),
+        "엘리트 처치: " + safeInteger(run.eliteKills, 0),
         "유물: " + relics,
         "빌드: " + bonuses
       ].join("\n"));
@@ -759,8 +943,12 @@
       });
       bindButton(elements.pauseButton, togglePause);
       bindButton(elements.restartButton, restartGame);
+      bindButton(elements.pauseRestartButton, restartGame);
+      bindButton(elements.pauseLobbyButton, returnToLobby);
       bindButton(elements.retryButton, restartGame);
+      bindButton(elements.gameOverLobbyButton, returnToLobby);
       bindButton(elements.clearRetryButton, restartGame);
+      bindButton(elements.clearLobbyButton, returnToLobby);
       bindInput();
     }
   };
