@@ -131,6 +131,37 @@
     run.camera.y = clamp(safeNumber(player.y, worldHeight / 2) - viewportHeight / 2, 0, Math.max(0, worldHeight - viewportHeight));
   }
 
+  function getViewportMargin() {
+    return clamp(safeNumber((Data.game || {}).targetViewportMargin, 64), 0, 140);
+  }
+
+  function isInsideTargetViewport(run, enemy, margin) {
+    const viewportMargin = Math.max(0, safeNumber(margin, getViewportMargin()));
+    const viewportWidth = getViewportWidth();
+    const viewportHeight = getViewportHeight();
+    const camera = run && run.camera ? run.camera : { x: 0, y: 0 };
+    const x = safeNumber(enemy && enemy.x, 0);
+    const y = safeNumber(enemy && enemy.y, 0);
+    const radius = Math.max(0, safeNumber(enemy && enemy.radius, 0));
+    const left = safeNumber(camera.x, 0) - viewportMargin - radius;
+    const top = safeNumber(camera.y, 0) - viewportMargin - radius;
+    const right = safeNumber(camera.x, 0) + viewportWidth + viewportMargin + radius;
+    const bottom = safeNumber(camera.y, 0) + viewportHeight + viewportMargin + radius;
+
+    return x >= left && x <= right && y >= top && y <= bottom;
+  }
+
+  function isEnemyTargetable(run, enemy, origin, maxRange, margin) {
+    const range = Math.max(0, safeNumber(maxRange, 0));
+    const source = origin || (run && run.player) || {};
+
+    if (!run || !enemy || range <= 0 || !isInsideTargetViewport(run, enemy, margin)) {
+      return false;
+    }
+
+    return distanceSquared(source, enemy) <= range * range;
+  }
+
   function safeInteger(value, fallback) {
     return Math.max(0, Math.floor(safeNumber(value, fallback)));
   }
@@ -154,6 +185,10 @@
     const speedGrowth = getWeaponGrowth(run, "weaponSpeed");
     const sizeGrowth = getWeaponGrowth(run, "weaponSize");
     const countGrowth = getWeaponGrowth(run, "weaponCount");
+    const weaponMasteryLevel = safeInteger(run && run.weaponMasteryLevel, 1);
+    const weaponMasteryDamage = weaponMasteryLevel >= 3 ? 1.03 : 1;
+    const weaponMasteryCooldown = weaponMasteryLevel >= 5 ? 0.97 : 1;
+    const weaponMasterySize = weaponMasteryLevel >= 7 ? 1.03 : 1;
     const damageBonus = 1 + powerGrowth * 0.18;
     const cooldownBonus = 1 - speedGrowth * 0.08;
     const sizeBonus = 1 + sizeGrowth * 0.08;
@@ -167,45 +202,46 @@
     const stats = {
       weapon: weapon,
       attackType: attackType,
-      damage: clamp(safeNumber(player.damage, 12) * safeNumber(weapon.damageMultiplier, 1) * damageBonus * (hasAbyssBonus ? 1.08 : 1) * abyssPowerBonus, 1, 999),
-      cooldown: clamp(safeNumber(player.attackCooldown, 0.55) * safeNumber(weapon.cooldownMultiplier, 1) * cooldownBonus, minCooldown, 4),
+      damage: clamp(safeNumber(player.damage, 12) * safeNumber(weapon.damageMultiplier, 1) * damageBonus * (hasAbyssBonus ? 1.08 : 1) * abyssPowerBonus * weaponMasteryDamage, 1, 999),
+      cooldown: clamp(safeNumber(player.attackCooldown, 0.55) * safeNumber(weapon.cooldownMultiplier, 1) * cooldownBonus * weaponMasteryCooldown, minCooldown, 4),
       projectileSpeed: clamp(safeNumber(player.projectileSpeed, 280) * (1 + speedGrowth * 0.08) * (hasBulletBonus ? 1.08 : 1), 30, 900),
-      projectileRadius: clamp(safeNumber(player.projectileRadius, 4) * sizeBonus * (hasBulletBonus ? 1.08 : 1), 1, 20),
+      projectileRadius: clamp(safeNumber(player.projectileRadius, 4) * sizeBonus * (hasBulletBonus ? 1.08 : 1) * weaponMasterySize, 1, 20),
       projectileCount: clamp(safeInteger(weapon.projectileCount, 1) + countGrowth, 1, 9)
     };
 
     stats.orbitCount = clamp(1 + getWeaponGrowth(run, "orbitCount") + Math.floor(countGrowth / 2), 1, 5);
-    stats.orbitRadius = clamp(46 * (0.85 + sizeScale * 0.15) + getWeaponGrowth(run, "orbitRadius") * 5, 34, 78);
-    stats.orbitBladeRadius = clamp(8 * sizeScale * (1 + getWeaponGrowth(run, "orbitPower") * 0.08), 5, 20);
+    stats.orbitRadius = clamp((46 * (0.85 + sizeScale * 0.15) + getWeaponGrowth(run, "orbitRadius") * 5) * weaponMasterySize, 34, 82);
+    stats.orbitBladeRadius = clamp(8 * sizeScale * (1 + getWeaponGrowth(run, "orbitPower") * 0.08) * weaponMasterySize, 5, 21);
     stats.orbitAngularSpeed = clamp(3.3 * speedScale * (1 + getWeaponGrowth(run, "orbitSpeed") * 0.16), 1.8, 8);
     stats.orbitDamage = clamp(stats.damage * (1 + getWeaponGrowth(run, "orbitPower") * 0.12), 2, 999);
     stats.orbitHitCooldown = clamp(0.45 * (stats.cooldown / 0.55), 0.16, 0.55);
 
+    stats.lightningRange = clamp(300 + speedGrowth * 10 + getWeaponGrowth(run, "chainCount") * 8, 260, 420);
     stats.chainCount = clamp(safeInteger(weapon.chainCount, 3) + getWeaponGrowth(run, "chainCount") + safeInteger(player.chainBonus, 0), 1, 6);
     stats.chainBeamCount = clamp(1 + getWeaponGrowth(run, "chainBeamCount") + Math.floor(countGrowth / 2), 1, 3);
     stats.chainWidth = clamp(3 * sizeScale + getWeaponGrowth(run, "chainWidth") * 1.3, 2, 9);
-    stats.chainRange = clamp(78 * (0.85 + speedScale * 0.15) + getWeaponGrowth(run, "chainCount") * 7, 55, 145);
+    stats.chainRange = clamp(170 * (0.9 + speedScale * 0.1) + getWeaponGrowth(run, "chainCount") * 8, 150, 240);
     stats.chainDamage = clamp(stats.damage * (1 + getWeaponGrowth(run, "chainPower") * 0.12 + getWeaponGrowth(run, "chainWidth") * 0.08) * safeNumber(player.chainDamageMultiplier, 1), 2, 999);
 
     stats.mineCount = clamp(1 + getWeaponGrowth(run, "mineCount") + safeInteger(player.mineBonus, 0) + (hasExplosionBonus ? 1 : 0), 1, 4);
-    stats.mineRadius = clamp(safeNumber(weapon.radius, 48) * sizeScale * safeNumber(player.mineRadiusMultiplier, 1) * safeNumber(player.explosionRadiusMultiplier, 1) * (1 + getWeaponGrowth(run, "mineRadius") * 0.12 + (hasExplosionBonus ? 0.08 : 0)), 24, 112);
+    stats.mineRadius = clamp(safeNumber(weapon.radius, 48) * sizeScale * safeNumber(player.mineRadiusMultiplier, 1) * safeNumber(player.explosionRadiusMultiplier, 1) * (1 + getWeaponGrowth(run, "mineRadius") * 0.12 + (hasExplosionBonus ? 0.08 : 0)) * weaponMasterySize, 24, 116);
     stats.mineArmTimer = clamp(0.45 / speedScale - getWeaponGrowth(run, "mineSpeed") * 0.04, 0.16, 0.55);
     stats.mineDamage = clamp(stats.damage * (1 + getWeaponGrowth(run, "minePower") * 0.14 + (hasExplosionBonus ? 0.08 : 0)) * safeNumber(player.explosionDamageMultiplier, 1), 4, 999);
 
     stats.waveCount = clamp(1 + getWeaponGrowth(run, "waveCount") + Math.floor(countGrowth / 2), 1, 3);
-    stats.waveRadius = clamp(safeNumber(weapon.radius, 118) * sizeScale * safeNumber(player.waveRadiusMultiplier, 1) * (1 + getWeaponGrowth(run, "waveRadius") * 0.1), 55, 240);
+    stats.waveRadius = clamp(safeNumber(weapon.radius, 118) * sizeScale * safeNumber(player.waveRadiusMultiplier, 1) * (1 + getWeaponGrowth(run, "waveRadius") * 0.1) * weaponMasterySize, 55, 247);
     stats.waveArc = clamp(0.7 * (0.85 + sizeScale * 0.15), 0.45, 1.15);
     stats.waveLife = clamp(0.22 * (0.9 + speedScale * 0.1) * safeNumber(player.effectDurationMultiplier, 1), 0.16, 0.5);
     stats.waveDamage = clamp(stats.damage * (1 + getWeaponGrowth(run, "wavePower") * 0.12) * safeNumber(player.waveDamageMultiplier, 1), 3, 999);
 
     stats.scytheCount = clamp(1 + Math.floor(countGrowth / 2), 1, 3);
-    stats.scytheRange = clamp(safeNumber(weapon.range, 76) * (0.9 + sizeScale * 0.1) + getWeaponGrowth(run, "scytheRange") * 9, 42, 150);
+    stats.scytheRange = clamp((safeNumber(weapon.range, 76) * (0.9 + sizeScale * 0.1) + getWeaponGrowth(run, "scytheRange") * 9) * weaponMasterySize, 42, 155);
     stats.scytheArc = clamp(safeNumber(weapon.arcWidth, 1.35) + sizeGrowth * 0.08, 0.7, 2.35);
     stats.scytheDamage = clamp(stats.damage * safeNumber(player.meleeDamageMultiplier, 1), 2, 999);
     stats.scytheHeal = clamp(safeNumber(weapon.healOnHit, 0.5) + powerGrowth * 0.15, 0, 4);
 
-    stats.lineRange = clamp(safeNumber(weapon.range, 260) * (0.9 + speedScale * 0.1) + speedGrowth * 10, 120, 420);
-    stats.lineWidth = clamp(safeNumber(weapon.width, 14) * sizeScale + getWeaponGrowth(run, "lineWidth") * 2, 6, 36);
+    stats.lineRange = clamp((safeNumber(weapon.range, 260) * (0.9 + speedScale * 0.1) + speedGrowth * 8) * weaponMasterySize, 120, 460);
+    stats.lineWidth = clamp((safeNumber(weapon.width, 14) * sizeScale + getWeaponGrowth(run, "lineWidth") * 2) * weaponMasterySize, 6, 37);
     stats.linePierce = clamp(safeInteger(weapon.pierce, 3) + getWeaponGrowth(run, "linePierce") + safeInteger(player.projectilePierceBonus, 0), 1, 8);
     stats.lineDamage = clamp(stats.damage * safeNumber(player.lineDamageMultiplier, 1), 2, 999);
 
@@ -323,8 +359,9 @@
     const baseChance = clamp(safeNumber(game.eliteChance, 0.07), 0, 0.25);
     const challengeBonus = run && run.selectedChallengeId !== "normal" ? 0.02 : 0;
     const zoneBonus = (run && run.selectedZoneId === "abyssCore" ? 0.01 : 0) + safeNumber(zone.eliteChanceBonus, 0);
+    const abyssBonus = safeNumber(run && run.abyssModifiers && run.abyssModifiers.eliteChanceBonus, 0);
     const splitterBonus = safeNumber(zone.splitterChanceBonus, 0);
-    const chance = clamp(baseChance + challengeBonus + zoneBonus, 0, 0.3);
+    const chance = clamp(baseChance + challengeBonus + zoneBonus + abyssBonus, 0, 0.4);
     let modifier;
 
     if (!enemy || enemy.isBoss || elapsed < 60 || countEliteEnemies(run) >= maxElites || Math.random() > chance) {
@@ -429,6 +466,7 @@
     const game = Data.game || {};
     const zone = getZone(run);
     const modifiers = getChallengeModifiers(run);
+    const abyssModifiers = run && run.abyssModifiers ? run.abyssModifiers : {};
     const base = type === "boss" ? getBossData(run) : getEnemyData(type);
     const padding = Math.max(0, safeNumber(game.spawnPadding, 40));
     const worldWidth = getWorldWidth(run);
@@ -468,8 +506,8 @@
       name: base.name || "적",
       x: x,
       y: y,
-      hp: Math.max(1, safeNumber(base.hp, 1) * (type === "boss" ? 1 : safeNumber(zone.enemyHpMultiplier, 1) * safeNumber(modifiers.enemyHpMultiplier, 1))),
-      maxHp: Math.max(1, safeNumber(base.hp, 1) * (type === "boss" ? 1 : safeNumber(zone.enemyHpMultiplier, 1) * safeNumber(modifiers.enemyHpMultiplier, 1))),
+      hp: Math.max(1, safeNumber(base.hp, 1) * (type === "boss" ? safeNumber(abyssModifiers.bossHpMultiplier, 1) : safeNumber(zone.enemyHpMultiplier, 1) * safeNumber(modifiers.enemyHpMultiplier, 1))),
+      maxHp: Math.max(1, safeNumber(base.hp, 1) * (type === "boss" ? safeNumber(abyssModifiers.bossHpMultiplier, 1) : safeNumber(zone.enemyHpMultiplier, 1) * safeNumber(modifiers.enemyHpMultiplier, 1))),
       speed: Math.max(0, safeNumber(base.speed, 0) * (type === "boss" ? 1 : safeNumber(zone.enemySpeedMultiplier, 1) * safeNumber(modifiers.enemySpeedMultiplier, 1))),
       damage: Math.max(0, safeNumber(base.damage, 0) * (type === "boss" ? 1 : safeNumber(zone.enemyDamageMultiplier, 1) * safeNumber(modifiers.enemyDamageMultiplier, 1))),
       radius: Math.max(1, safeNumber(base.radius, 8)),
@@ -645,12 +683,16 @@
     return true;
   }
 
-  function findNearestEnemy(run, origin, excluded) {
+  function findNearestEnemy(run, origin, excluded, maxRange, margin) {
     let nearest = null;
     let nearestDistance = Infinity;
+    const hasRangeLimit = Number.isFinite(Number(maxRange)) && Number(maxRange) > 0;
 
     for (let i = 0; i < run.enemies.length; i += 1) {
       if (run.enemies[i] === excluded) {
+        continue;
+      }
+      if (hasRangeLimit && !isEnemyTargetable(run, run.enemies[i], origin, maxRange, margin)) {
         continue;
       }
 
@@ -664,14 +706,18 @@
     return nearest;
   }
 
-  function findNearestEnemyNotIn(run, origin, excludedIds) {
+  function findNearestEnemyNotIn(run, origin, excludedIds, maxRange, margin) {
     let nearest = null;
     let nearestDistance = Infinity;
     const blocked = excludedIds || {};
+    const hasRangeLimit = Number.isFinite(Number(maxRange)) && Number(maxRange) > 0;
 
     for (let i = 0; i < run.enemies.length; i += 1) {
       const enemyId = String(run.enemies[i].id);
       if (blocked[enemyId]) {
+        continue;
+      }
+      if (hasRangeLimit && !isEnemyTargetable(run, run.enemies[i], origin, maxRange, margin)) {
         continue;
       }
 
@@ -756,9 +802,10 @@
     const stats = getWeaponStats(run);
     const globalHit = {};
     const starts = [];
+    const margin = getViewportMargin();
 
     for (let i = 0; i < run.enemies.length && starts.length < stats.chainBeamCount; i += 1) {
-      const candidate = findNearestEnemyNotIn(run, run.player, globalHit);
+      const candidate = findNearestEnemyNotIn(run, run.player, globalHit, stats.lightningRange, margin);
       if (!candidate || globalHit[String(candidate.id)]) {
         break;
       }
@@ -787,7 +834,7 @@
         previous = current;
         current = null;
         for (let j = 0; j < run.enemies.length; j += 1) {
-          if (!hit[String(run.enemies[j].id)] && distanceSquared(previous, run.enemies[j]) <= stats.chainRange * stats.chainRange) {
+          if (!hit[String(run.enemies[j].id)] && isEnemyTargetable(run, run.enemies[j], previous, stats.chainRange, margin)) {
             current = run.enemies[j];
             break;
           }
@@ -819,6 +866,7 @@
   function attackWithWave(run, nearest, weapon) {
     const player = run.player;
     const stats = getWeaponStats(run);
+    const margin = getViewportMargin();
     const dir = normalize(safeNumber(nearest.x, 0) - safeNumber(player.x, 0), safeNumber(nearest.y, 0) - safeNumber(player.y, 0));
     const baseAngle = Math.atan2(dir.y, dir.x);
     const hitIds = {};
@@ -847,7 +895,7 @@
         const enemyId = String(enemy.id);
         const toEnemy = normalize(safeNumber(enemy.x, 0) - safeNumber(player.x, 0), safeNumber(enemy.y, 0) - safeNumber(player.y, 0));
         const dot = waveDir.x * toEnemy.x + waveDir.y * toEnemy.y;
-        if (!hitIds[enemyId] && distanceSquared(player, enemy) <= stats.waveRadius * stats.waveRadius && dot > 0.42) {
+        if (!hitIds[enemyId] && isEnemyTargetable(run, enemy, player, stats.waveRadius, margin) && dot > 0.42) {
           hitIds[enemyId] = true;
           damageEnemy(run, enemy, Math.max(3, stats.waveDamage), "wave");
         }
@@ -858,6 +906,7 @@
   function attackWithScythe(run, nearest, weapon) {
     const player = run.player;
     const stats = getWeaponStats(run);
+    const margin = getViewportMargin();
     const dir = normalize(safeNumber(nearest.x, 0) - safeNumber(player.x, 0), safeNumber(nearest.y, 0) - safeNumber(player.y, 0));
     const baseAngle = Math.atan2(dir.y, dir.x);
     const hitIds = {};
@@ -887,7 +936,7 @@
         const dot = sweepDir.x * toEnemy.x + sweepDir.y * toEnemy.y;
         const range = stats.scytheRange + safeNumber(enemy.radius, 8);
 
-        if (!hitIds[enemyId] && distanceSquared(player, enemy) <= range * range && dot >= Math.cos(stats.scytheArc)) {
+        if (!hitIds[enemyId] && isEnemyTargetable(run, enemy, player, range, margin) && dot >= Math.cos(stats.scytheArc)) {
           hitIds[enemyId] = true;
           damageEnemy(run, enemy, stats.scytheDamage, "slash");
           hitCount += 1;
@@ -903,6 +952,7 @@
   function attackWithLinePierce(run, nearest, weapon) {
     const player = run.player;
     const stats = getWeaponStats(run);
+    const margin = getViewportMargin();
     const dir = normalize(safeNumber(nearest.x, 0) - safeNumber(player.x, 0), safeNumber(nearest.y, 0) - safeNumber(player.y, 0));
     const fromX = safeNumber(player.x, 0);
     const fromY = safeNumber(player.y, 0);
@@ -925,7 +975,7 @@
       const enemy = run.enemies[i];
       const hitWidth = stats.lineWidth / 2 + safeNumber(enemy.radius, 8);
 
-      if (distanceToSegmentSquared(enemy, fromX, fromY, toX, toY) <= hitWidth * hitWidth) {
+      if (isEnemyTargetable(run, enemy, player, stats.lineRange + safeNumber(enemy.radius, 8), margin) && distanceToSegmentSquared(enemy, fromX, fromY, toX, toY) <= hitWidth * hitWidth) {
         damageEnemy(run, enemy, stats.lineDamage, "linePierce");
         hitCount += 1;
       }
@@ -971,17 +1021,16 @@
       return;
     }
 
-    nearest = findNearestEnemy(run, player, null);
-    if (!nearest) {
-      return;
-    }
-
     if (attackType === "orbit") {
       ensureWeaponOrbital(run);
       return;
     }
 
     if (attackType === "chain") {
+      nearest = findNearestEnemy(run, player, null, stats.lightningRange, getViewportMargin());
+      if (!nearest) {
+        return;
+      }
       attackWithChain(run, nearest, weapon);
       return;
     }
@@ -992,17 +1041,34 @@
     }
 
     if (attackType === "wave") {
+      nearest = findNearestEnemy(run, player, null, stats.waveRadius, getViewportMargin());
+      if (!nearest) {
+        return;
+      }
       attackWithWave(run, nearest, weapon);
       return;
     }
 
     if (attackType === "scythe") {
+      nearest = findNearestEnemy(run, player, null, stats.scytheRange, getViewportMargin());
+      if (!nearest) {
+        return;
+      }
       attackWithScythe(run, nearest, weapon);
       return;
     }
 
     if (attackType === "linePierce") {
+      nearest = findNearestEnemy(run, player, null, stats.lineRange, getViewportMargin());
+      if (!nearest) {
+        return;
+      }
       attackWithLinePierce(run, nearest, weapon);
+      return;
+    }
+
+    nearest = findNearestEnemy(run, player, null);
+    if (!nearest) {
       return;
     }
 
@@ -1109,7 +1175,7 @@
     while (run.exp >= run.expToNext) {
       run.exp -= run.expToNext;
       run.level = Math.max(1, Math.floor(safeNumber(run.level, 1))) + 1;
-      run.expToNext = Math.max(minExpToNext, Math.floor(safeNumber(run.expToNext, 20) * 1.25 + 8));
+      run.expToNext = Math.max(minExpToNext, Math.floor(safeNumber(run.expToNext, 24) * 1.32 + 10 + Math.max(0, safeNumber(run.level, 1) - 5) * 2));
       if (shouldOfferRelic(run)) {
         run.relicChoices = chooseRelics(run, 3);
         run.pendingAbilities = run.relicChoices;
@@ -1889,6 +1955,14 @@
   }
 
   AS.Game = {
+    getWeaponStats: function (run) {
+      return getWeaponStats(run || (AS.State && AS.State.getRun ? AS.State.getRun() : null));
+    },
+
+    isEnemyTargetable: function (run, enemy, origin, maxRange) {
+      return isEnemyTargetable(run, enemy, origin, maxRange, getViewportMargin());
+    },
+
     update: function (run, delta) {
       const game = Data.game || {};
       const safeDelta = clamp(safeNumber(delta, 0), 0, 0.05);
