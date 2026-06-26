@@ -565,6 +565,91 @@
       }
     ],
 
+    events: [
+      {
+        id: "normal",
+        name: "일반",
+        shortName: "일반",
+        icon: "○",
+        rarity: "common",
+        description: "기본 규칙으로 진행합니다.",
+        rewardMultiplier: 1,
+        modifiers: {}
+      },
+      {
+        id: "bloodNight",
+        name: "피의 밤",
+        shortName: "피의 밤",
+        icon: "◆",
+        rarity: "rare",
+        description: "적 피해가 증가하지만 처치 시 체력을 회복합니다.",
+        rewardMultiplier: 1.25,
+        modifiers: {
+          enemyDamageMultiplier: 1.18,
+          enemyHpMultiplier: 1.05,
+          healOnKill: 1.5
+        }
+      },
+      {
+        id: "gemStorm",
+        name: "보석 폭풍",
+        shortName: "보석",
+        icon: "◇",
+        rarity: "rare",
+        description: "보석과 적이 더 많이 등장합니다.",
+        rewardMultiplier: 1.2,
+        modifiers: {
+          gemExpMultiplier: 1.15,
+          gemDropBonus: 0.12,
+          spawnIntervalMultiplier: 0.82,
+          maxEnemiesBonus: 12
+        }
+      },
+      {
+        id: "glassContract",
+        name: "약자의 계약",
+        shortName: "계약",
+        icon: "△",
+        rarity: "epic",
+        description: "최대 체력이 크게 감소하지만 공격력이 증가합니다.",
+        rewardMultiplier: 1.5,
+        modifiers: {
+          playerMaxHpMultiplier: 0.55,
+          playerDamageMultiplier: 1.35,
+          damageTakenMultiplier: 1.05
+        }
+      },
+      {
+        id: "silentBattlefield",
+        name: "침묵의 전장",
+        shortName: "침묵",
+        icon: "□",
+        rarity: "epic",
+        description: "공격 속도가 느려지지만 유물 선택과 효과가 강화됩니다.",
+        rewardMultiplier: 1.35,
+        modifiers: {
+          attackCooldownMultiplier: 1.18,
+          relicEffectMultiplier: 1.18,
+          relicOfferBonus: 1
+        }
+      },
+      {
+        id: "abyssSurge",
+        name: "심연 폭주",
+        shortName: "폭주",
+        icon: "◎",
+        rarity: "epic",
+        description: "처음부터 적이 더 많이 몰려옵니다.",
+        rewardMultiplier: 1.4,
+        modifiers: {
+          spawnIntervalMultiplier: 0.72,
+          enemyHpMultiplier: 1.08,
+          eliteChanceBonus: 0.04,
+          maxEnemiesBonus: 18
+        }
+      }
+    ],
+
     enemies: {
       normal: {
         id: "normal",
