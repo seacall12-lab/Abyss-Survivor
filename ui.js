@@ -528,18 +528,10 @@
     const panel = elements.lobbySummaryPanel;
     const upgrades = save.upgrades || {};
     const missions = save.missions || {};
-    const completed = missions.completed || {};
-    let completedCount = 0;
-    let key;
+    const history = missions.runHistory || {};
 
     if (!panel) {
       return;
-    }
-
-    for (key in completed) {
-      if (Object.prototype.hasOwnProperty.call(completed, key) && completed[key]) {
-        completedCount += 1;
-      }
     }
 
     panel.innerHTML = "";
@@ -551,7 +543,7 @@
     appendLobbySummaryButton(panel, "⬢", "숙련도", getMasterySummary(save), "mastery");
     appendLobbySummaryButton(panel, "◆", "성장", { name: "보유 " + safeInteger(save.shards, 0), description: "체력 " + safeInteger(upgrades.vitality, 0) + " · 공격 " + safeInteger(upgrades.power, 0) + " · 수집 " + safeInteger(upgrades.growth, 0) }, "upgrade");
     appendLobbySummaryButton(panel, "▣", "해금", getUnlockSummary(), "unlock");
-    appendLobbySummaryButton(panel, "✓", "임무", { name: completedCount + "/" + (Data.missions || []).length, description: "진행 중 임무와 완료 보상을 확인합니다." }, "mission");
+    appendLobbySummaryButton(panel, "✓", "임무", { name: "이번 런 3개", description: "누적 완료 " + safeInteger(history.totalCompleted, 0) + " · 보상 " + safeInteger(history.totalReward, 0) }, "mission");
   }
 
   function openLobbyModal(type) {
@@ -788,10 +780,10 @@
 
   function renderMissionPanel(targetPanel) {
     const save = getSave();
+    const run = getRun();
     const panel = targetPanel || elements.missionPanel;
-    const missions = Data.missions || [];
-    const completed = save.missions && save.missions.completed ? save.missions.completed : {};
-    const progress = save.missions && save.missions.progress ? save.missions.progress : {};
+    const missions = AS.State && AS.State.getRunMissions ? AS.State.getRunMissions(run) : (run.runMissions || []);
+    const history = save.missions && save.missions.runHistory ? save.missions.runHistory : {};
     let completedCount = 0;
 
     if (!panel) {
@@ -799,7 +791,7 @@
     }
 
     for (let i = 0; i < missions.length; i += 1) {
-      if (completed[missions[i].id]) {
+      if (missions[i].completed) {
         completedCount += 1;
       }
     }
@@ -816,20 +808,30 @@
     panel.appendChild(heading);
     panel.appendChild(summary);
     panel.appendChild(list);
+    heading.textContent = "이번 런 임무";
+    summary.textContent = completedCount + "/" + missions.length + " · 누적 " + safeInteger(history.totalCompleted, 0);
+
+    if (!missions.length) {
+      const empty = document.createElement("div");
+      empty.className = "choice-button";
+      empty.textContent = "런 시작 시 임무 3개가 생성됩니다.";
+      list.appendChild(empty);
+      return;
+    }
 
     for (let i = 0; i < missions.length; i += 1) {
       const mission = missions[i];
       const row = document.createElement("div");
-      const icon = createIcon(completed[mission.id] ? "✓" : "◇", "choice-icon");
+      const icon = createIcon(mission.completed ? "✓" : "◇", "choice-icon");
       const body = document.createElement("span");
       const name = document.createElement("strong");
       const description = document.createElement("span");
-      row.className = completed[mission.id] ? "choice-button is-selected" : "choice-button";
+      row.className = mission.completed ? "choice-button is-selected" : "choice-button";
       applyRarityStyle(row, mission, "mission");
       applyRarityStyle(icon, mission, "mission");
       body.className = "choice-body";
       name.textContent = mission.name + " +" + safeInteger(mission.reward, 0);
-      description.textContent = completed[mission.id] ? "완료" : ("진행 " + safeInteger(progress[mission.id], 0) + "/" + safeInteger(mission.target, 1));
+      description.textContent = mission.completed ? "완료" : ("진행 " + safeInteger(mission.progress, 0) + "/" + safeInteger(mission.target, 1));
       body.appendChild(name);
       body.appendChild(description);
       row.appendChild(icon);
@@ -1246,7 +1248,7 @@
           title.textContent = "Abyss Survivor";
         }
         if (message) {
-          message.textContent = "3분 생존 · 보스 처치";
+          message.textContent = "3분 생존 · 보스 처치 후 심연 폭주";
         }
         if (elements.startButton) {
           elements.startButton.textContent = "▶ 시작";
@@ -1388,6 +1390,10 @@
       const zoneItem = findById(Data.zones, run.selectedZoneId || save.selectedZoneId, "riftGate");
       const challengeItem = findById(Data.challenges, run.selectedChallengeId || save.selectedChallengeId, "normal");
       const weaponItem = findById(Data.weapons, run.selectedWeaponId || save.selectedWeaponId, "abyssBullet");
+      const runMissions = run.runMissions || [];
+      const missionText = runMissions.map(function (mission) {
+        return (mission.completed ? "완료 " : "미완료 ") + mission.name + (mission.completed ? " +" + safeInteger(mission.reward, 0) : "");
+      }).join(" / ") || "없음";
       const relics = (run.relics || []).map(function (relic) {
         return relic.name;
       }).join(", ") || "없음";
@@ -1403,6 +1409,8 @@
         resultText + " · ⏱ " + formatTime(run.time) + " · ☠ " + safeInteger(run.kills, 0) + " · Lv " + safeInteger(run.level, 1),
         "⬟ " + classItem.name + " / ● " + weaponItem.name + " / ◇ " + zoneItem.name + " / ○ " + challengeItem.name + " / 심연 " + safeInteger(run.selectedDepth, 0) + " x" + safeNumber(run.rewardMultiplier, 1).toFixed(2),
         "◆ +" + safeInteger(run.shardReward, 0) + " · 임무 +" + safeInteger(run.missionShardReward, 0) + " · 보유 " + safeInteger(save.shards, 0),
+        "3분 생존: " + (run.mode === (states.clear || "clear") ? "성공" : "실패") + " · 보스 처치: " + (run.bossDefeated ? "성공" : "미달성"),
+        "임무: " + missionText,
         "숙련도 +" + safeInteger(run.masteryExpGained, 0) + (run.depthUnlocked ? " · 다음 심연 단계 해금" : ""),
         "신규 해금: " + unlocks,
         "엘리트 처치: " + safeInteger(run.eliteKills, 0),
