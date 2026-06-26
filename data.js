@@ -26,7 +26,13 @@
       meleeBossContactDamageMultiplier: 0.7,
       finalWaveSpawnMultiplier: 0.75,
       finalWaveEliteChanceBonus: 0.05,
-      finalWaveMaxEnemiesBonus: 16
+      finalWaveMaxEnemiesBonus: 16,
+      bossRushBossCount: 4,
+      bossRushRunDuration: 240,
+      bossRushSpawnDelay: 1.2,
+      bossRushMinionInterval: 1.35,
+      bossRushMaxEnemies: 46,
+      bossRushRewardMultiplier: 1.25
     },
 
     states: {
@@ -565,6 +571,27 @@
       }
     ],
 
+    runModes: [
+      {
+        id: "survival",
+        name: "생존",
+        shortName: "생존",
+        icon: "⏱",
+        rarity: "common",
+        description: "3분 생존과 보스 처치 후 최종 웨이브로 진행합니다.",
+        rewardMultiplier: 1
+      },
+      {
+        id: "bossRush",
+        name: "보스 러시",
+        shortName: "러시",
+        icon: "♛",
+        rarity: "epic",
+        description: "보스를 연속으로 처치하고 보스 사이마다 보상을 선택합니다.",
+        rewardMultiplier: 1.25
+      }
+    ],
+
     events: [
       {
         id: "normal",
@@ -638,14 +665,14 @@
         name: "심연 폭주",
         shortName: "폭주",
         icon: "◎",
-        rarity: "epic",
-        description: "처음부터 적이 더 많이 몰려옵니다.",
-        rewardMultiplier: 1.4,
+        rarity: "rare",
+        description: "처음부터 적이 조금 더 많이 몰려옵니다.",
+        rewardMultiplier: 1.3,
         modifiers: {
-          spawnIntervalMultiplier: 0.72,
-          enemyHpMultiplier: 1.08,
-          eliteChanceBonus: 0.04,
-          maxEnemiesBonus: 18
+          spawnIntervalMultiplier: 0.82,
+          enemyHpMultiplier: 1.04,
+          eliteChanceBonus: 0.025,
+          maxEnemiesBonus: 10
         }
       }
     ],
@@ -955,7 +982,7 @@
       {
         id: "projectileSpeedUp",
         name: "투사체 속도 증가",
-        description: "투사체가 더 빠르게 이동합니다.",
+        description: "원거리 투사체와 무기별 전개 속도가 증가합니다.",
         type: "stat",
         stat: "projectileSpeed",
         value: 35,
@@ -966,7 +993,7 @@
       {
         id: "projectileSizeUp",
         name: "투사체 크기 증가",
-        description: "투사체가 더 커집니다.",
+        description: "투사체 크기와 무기별 타격 범위가 증가합니다.",
         type: "stat",
         stat: "projectileRadius",
         value: 1,
@@ -1022,7 +1049,7 @@
       {
         id: "piercingShot",
         name: "관통 파편",
-        description: "투사체가 적을 1회 추가로 관통합니다.",
+        description: "무기 방식에 맞춰 관통, 연쇄, 범위 효율이 증가합니다.",
         type: "evolution",
         tags: ["bullet", "projectile"],
         category: "evolution",
@@ -1032,7 +1059,7 @@
       {
         id: "splitShot",
         name: "분열 파편",
-        description: "공격할 때 좌우 보조 투사체를 함께 발사합니다.",
+        description: "공격할 때 무기별 보조 타격이 함께 발생합니다.",
         type: "evolution",
         tags: ["bullet", "projectile"],
         category: "evolution",
