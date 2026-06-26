@@ -188,6 +188,8 @@
       voidMine: "✦",
       wideWave: "≋",
       normal: "○",
+      survival: "⏱",
+      bossRush: "♛",
       hungryAbyss: "☄",
       glassSurvivor: "△",
       fastErosion: "»",
@@ -539,6 +541,7 @@
     appendLobbySummaryButton(panel, "⬟", "클래스", selectedSummary(Data.classes || [], save.selectedClassId, "wanderer"), "class");
     appendLobbySummaryButton(panel, "●", "무기", selectedSummary(Data.weapons || [], save.selectedWeaponId, "abyssBullet"), "weapon");
     appendLobbySummaryButton(panel, "◇", "구역", selectedSummary(Data.zones || [], save.selectedZoneId, "riftGate"), "zone");
+    appendLobbySummaryButton(panel, "♛", "모드", selectedSummary(Data.runModes || [], save.selectedRunModeId, "survival"), "runMode");
     appendLobbySummaryButton(panel, "○", "도전", selectedSummary(Data.challenges || [], save.selectedChallengeId, "normal"), "challenge");
     appendLobbySummaryButton(panel, "◇", "이벤트", selectedSummary(Data.events || [], save.selectedEventId, "normal"), "event");
     appendLobbySummaryButton(panel, "⬢", "숙련도", getMasterySummary(save), "mastery");
@@ -700,6 +703,14 @@
         }
         closeLobbyModal();
       });
+    } else if (activeLobbyModal === "runMode") {
+      title = "런 모드 선택";
+      renderSelectionPanel(body, "", Data.runModes || [], save.selectedRunModeId || "survival", function (id) {
+        if (AS.State && AS.State.setSelectedRunMode) {
+          AS.State.setSelectedRunMode(id);
+        }
+        closeLobbyModal();
+      }, "runMode");
     } else if (activeLobbyModal === "event") {
       title = "이벤트 런 선택";
       renderSelectionPanel(body, "", Data.events || [], save.selectedEventId || "normal", function (id) {
@@ -1363,6 +1374,7 @@
         save.selectedWeaponId,
         save.selectedZoneId,
         save.selectedChallengeId,
+        save.selectedRunModeId,
         save.selectedEventId,
         safeInteger(save.abyss && save.abyss.selectedDepth, 0),
         safeInteger(save.abyss && save.abyss.maxUnlockedDepth, 0),
@@ -1399,6 +1411,7 @@
       const classItem = findById(Data.classes, run.selectedClassId || save.selectedClassId, "wanderer");
       const zoneItem = findById(Data.zones, run.selectedZoneId || save.selectedZoneId, "riftGate");
       const challengeItem = findById(Data.challenges, run.selectedChallengeId || save.selectedChallengeId, "normal");
+      const runModeItem = findById(Data.runModes, run.selectedRunModeId || save.selectedRunModeId, "survival");
       const eventItem = findById(Data.events, run.selectedEventId || save.selectedEventId, "normal");
       const weaponItem = findById(Data.weapons, run.selectedWeaponId || save.selectedWeaponId, "abyssBullet");
       const runMissions = run.runMissions || [];
@@ -1418,9 +1431,9 @@
 
       setText(target, [
         resultText + " · ⏱ " + formatTime(run.time) + " · ☠ " + safeInteger(run.kills, 0) + " · Lv " + safeInteger(run.level, 1),
-        "⬟ " + classItem.name + " / ● " + weaponItem.name + " / ◇ " + zoneItem.name + " / ○ " + challengeItem.name + " / 이벤트 " + (eventItem.name || "일반") + " / 심연 " + safeInteger(run.selectedDepth, 0) + " x" + safeNumber(run.rewardMultiplier, 1).toFixed(2),
+        "⬟ " + classItem.name + " / ● " + weaponItem.name + " / ◇ " + zoneItem.name + " / 모드 " + (runModeItem.name || "생존") + " / ○ " + challengeItem.name + " / 이벤트 " + (eventItem.name || "일반") + " / 심연 " + safeInteger(run.selectedDepth, 0) + " x" + safeNumber(run.rewardMultiplier, 1).toFixed(2),
         "◆ +" + safeInteger(run.shardReward, 0) + " · 임무 +" + safeInteger(run.missionShardReward, 0) + " · 보유 " + safeInteger(save.shards, 0),
-        "3분 생존: " + (run.mode === (states.clear || "clear") ? "성공" : "실패") + " · 보스 처치: " + (run.bossDefeated ? "성공" : "미달성"),
+        (run.selectedRunModeId === "bossRush" ? "보스 러시: " + safeInteger(run.bossRushDefeated, 0) + "/" + safeInteger(run.bossRushBossCount, 0) : "3분 생존: " + (run.mode === (states.clear || "clear") ? "성공" : "실패")) + " · 보스 처치: " + (run.bossDefeated ? "성공" : "미달성"),
         "임무: " + missionText,
         "숙련도 +" + safeInteger(run.masteryExpGained, 0) + (run.depthUnlocked ? " · 다음 심연 단계 해금" : ""),
         "신규 해금: " + unlocks,
