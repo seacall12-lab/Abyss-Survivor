@@ -10,6 +10,7 @@
   let lastSetupSignature = "";
   let lastHudSignature = "";
   let lastOverlaySignature = "";
+  let activeLobbyModal = "";
   const pointerDeadZone = 10;
   const pointerMaxDistance = 70;
 
@@ -57,23 +58,11 @@
   function setSetupVisible(visible) {
     const displayValue = visible ? "" : "none";
 
-    if (elements.classPanel) {
-      elements.classPanel.style.display = displayValue;
+    if (elements.lobbySummaryPanel) {
+      elements.lobbySummaryPanel.style.display = displayValue;
     }
-    if (elements.weaponPanel) {
-      elements.weaponPanel.style.display = displayValue;
-    }
-    if (elements.zonePanel) {
-      elements.zonePanel.style.display = displayValue;
-    }
-    if (elements.challengePanel) {
-      elements.challengePanel.style.display = displayValue;
-    }
-    if (elements.upgradePanel) {
-      elements.upgradePanel.style.display = displayValue;
-    }
-    if (elements.missionPanel) {
-      elements.missionPanel.style.display = displayValue;
+    if (!visible) {
+      closeLobbyModal();
     }
   }
 
@@ -354,6 +343,49 @@
     return button;
   }
 
+  function ensureLobbyModal() {
+    let modal = document.getElementById("lobbyModal");
+    let title;
+    let body;
+    let closeButton;
+
+    if (!modal && elements.startPanel) {
+      modal = document.createElement("div");
+      modal.id = "lobbyModal";
+      modal.className = "lobby-modal is-hidden";
+
+      title = document.createElement("strong");
+      title.id = "lobbyModalTitle";
+      title.className = "panel-title";
+
+      body = document.createElement("div");
+      body.id = "lobbyModalBody";
+      body.className = "lobby-modal-body";
+
+      closeButton = document.createElement("button");
+      closeButton.id = "lobbyModalClose";
+      closeButton.type = "button";
+      closeButton.className = "secondary-button";
+      closeButton.textContent = "닫기";
+
+      modal.appendChild(title);
+      modal.appendChild(body);
+      modal.appendChild(closeButton);
+      elements.startPanel.insertBefore(modal, elements.startButton || null);
+    }
+
+    elements.lobbyModal = modal;
+    elements.lobbyModalTitle = findElement("lobbyModalTitle");
+    elements.lobbyModalBody = findElement("lobbyModalBody");
+    elements.lobbyModalClose = findElement("lobbyModalClose");
+
+    if (elements.lobbyModalClose) {
+      elements.lobbyModalClose.onclick = closeLobbyModal;
+    }
+
+    return modal;
+  }
+
   function setElementVisible(element, visible) {
     if (element) {
       element.style.display = visible ? "" : "none";
@@ -371,7 +403,9 @@
     heading.className = "panel-title";
     heading.textContent = title;
     list.className = "choice-list";
-    panel.appendChild(heading);
+    if (title) {
+      panel.appendChild(heading);
+    }
     panel.appendChild(list);
 
     for (let i = 0; i < items.length; i += 1) {
@@ -383,20 +417,29 @@
       const badge = createRarityBadge(item, category);
       const description = document.createElement("span");
       const multiplier = safeNumber(item.rewardMultiplier, 0);
+      const unlockCategory = category === "class" ? "classes" : (category === "weapon" ? "weapons" : (category === "zone" ? "zones" : category));
+      const isLocked = unlockCategory && AS.State && AS.State.isUnlocked && (unlockCategory === "classes" || unlockCategory === "weapons" || unlockCategory === "zones") ? !AS.State.isUnlocked(unlockCategory, item.id) : false;
 
       button.className = item.id === selectedId ? "choice-button is-selected" : "choice-button";
+      if (isLocked) {
+        button.className += " is-locked";
+      }
       button.type = "button";
+      button.disabled = isLocked;
       applyRarityStyle(button, item, category);
       applyRarityStyle(icon, item, category);
       body.className = "choice-body";
       name.textContent = item.name + (item.difficulty ? " · " + item.difficulty : "") + (multiplier > 0 ? " · x" + multiplier.toFixed(2) : "");
-      description.textContent = shortenDescription(item.description);
+      description.textContent = isLocked && AS.State && AS.State.getUnlockMessage ? "잠김: " + AS.State.getUnlockMessage(unlockCategory, item.id) : shortenDescription(item.description);
       body.appendChild(name);
       body.appendChild(badge);
       body.appendChild(description);
       button.appendChild(icon);
       button.appendChild(body);
       button.addEventListener("click", function () {
+        if (isLocked) {
+          return;
+        }
         onSelect(item.id);
         AS.UI.renderStartOptions();
       });
@@ -404,9 +447,286 @@
     }
   }
 
-  function renderUpgradePanel() {
+  function closeLobbyModal() {
+    activeLobbyModal = "";
+    if (elements.lobbyModal) {
+      elements.lobbyModal.classList.add("is-hidden");
+    }
+    if (elements.lobbyModalBody) {
+      elements.lobbyModalBody.innerHTML = "";
+    }
+  }
+
+  function selectedSummary(items, selectedId, fallbackId) {
+    const item = findById(items, selectedId, fallbackId);
+    const name = item.name || "선택 없음";
+    const description = shortenDescription(item.description || "");
+    return {
+      item: item,
+      name: name,
+      description: description
+    };
+  }
+
+  function appendLobbySummaryButton(panel, iconText, label, summary, modalType) {
+    const button = document.createElement("button");
+    const icon = createIcon(iconText, "menu-icon");
+    const body = document.createElement("span");
+    const title = document.createElement("strong");
+    const description = document.createElement("span");
+    const arrow = document.createElement("span");
+
+    button.type = "button";
+    button.className = "lobby-choice-button";
+    body.className = "lobby-choice-body";
+    title.textContent = label + " · " + summary.name;
+    description.textContent = summary.description || "선택 창 열기";
+    arrow.className = "lobby-choice-arrow";
+    arrow.textContent = "›";
+    body.appendChild(title);
+    body.appendChild(description);
+    button.appendChild(icon);
+    button.appendChild(body);
+    button.appendChild(arrow);
+    button.addEventListener("click", function () {
+      openLobbyModal(modalType);
+    });
+    panel.appendChild(button);
+  }
+
+  function getMasterySummary(save) {
+    const classEntry = AS.State && AS.State.getMasteryEntry ? AS.State.getMasteryEntry("classes", save.selectedClassId) : { level: 1 };
+    const weaponEntry = AS.State && AS.State.getMasteryEntry ? AS.State.getMasteryEntry("weapons", save.selectedWeaponId) : { level: 1 };
+    const zoneEntry = AS.State && AS.State.getMasteryEntry ? AS.State.getMasteryEntry("zones", save.selectedZoneId) : { level: 1 };
+
+    return {
+      name: "클래스 Lv." + safeInteger(classEntry.level, 1) + " · 무기 Lv." + safeInteger(weaponEntry.level, 1) + " · 구역 Lv." + safeInteger(zoneEntry.level, 1),
+      description: "현재 선택 항목의 숙련도 효과를 확인합니다."
+    };
+  }
+
+  function getUnlockSummary() {
+    const rows = AS.State && AS.State.getUnlockRows ? AS.State.getUnlockRows() : [];
+    let locked = 0;
+    let unlocked = 0;
+
+    for (let i = 0; i < rows.length; i += 1) {
+      if (rows[i].unlocked) {
+        unlocked += 1;
+      } else {
+        locked += 1;
+      }
+    }
+
+    return {
+      name: unlocked + "개 해금 · " + locked + "개 잠김",
+      description: "잠긴 콘텐츠와 해금 조건을 확인합니다."
+    };
+  }
+
+  function renderLobbySummary(save) {
+    const panel = elements.lobbySummaryPanel;
+    const upgrades = save.upgrades || {};
+    const missions = save.missions || {};
+    const completed = missions.completed || {};
+    let completedCount = 0;
+    let key;
+
+    if (!panel) {
+      return;
+    }
+
+    for (key in completed) {
+      if (Object.prototype.hasOwnProperty.call(completed, key) && completed[key]) {
+        completedCount += 1;
+      }
+    }
+
+    panel.innerHTML = "";
+    appendLobbySummaryButton(panel, "◆", "심연", { name: safeInteger(save.abyss && save.abyss.selectedDepth, 0) + "단계", description: "최고 해금 " + safeInteger(save.abyss && save.abyss.maxUnlockedDepth, 0) + "단계" }, "abyss");
+    appendLobbySummaryButton(panel, "⬟", "클래스", selectedSummary(Data.classes || [], save.selectedClassId, "wanderer"), "class");
+    appendLobbySummaryButton(panel, "●", "무기", selectedSummary(Data.weapons || [], save.selectedWeaponId, "abyssBullet"), "weapon");
+    appendLobbySummaryButton(panel, "◇", "구역", selectedSummary(Data.zones || [], save.selectedZoneId, "riftGate"), "zone");
+    appendLobbySummaryButton(panel, "○", "도전", selectedSummary(Data.challenges || [], save.selectedChallengeId, "normal"), "challenge");
+    appendLobbySummaryButton(panel, "⬢", "숙련도", getMasterySummary(save), "mastery");
+    appendLobbySummaryButton(panel, "◆", "성장", { name: "보유 " + safeInteger(save.shards, 0), description: "체력 " + safeInteger(upgrades.vitality, 0) + " · 공격 " + safeInteger(upgrades.power, 0) + " · 수집 " + safeInteger(upgrades.growth, 0) }, "upgrade");
+    appendLobbySummaryButton(panel, "▣", "해금", getUnlockSummary(), "unlock");
+    appendLobbySummaryButton(panel, "✓", "임무", { name: completedCount + "/" + (Data.missions || []).length, description: "진행 중 임무와 완료 보상을 확인합니다." }, "mission");
+  }
+
+  function openLobbyModal(type) {
+    activeLobbyModal = type || "";
+    renderLobbyModal();
+  }
+
+  function renderAbyssPanel(panel) {
     const save = getSave();
-    const panel = elements.upgradePanel;
+    const abyss = save.abyss || {};
+    const selectedDepth = safeInteger(abyss.selectedDepth, 0);
+    const maxUnlockedDepth = safeInteger(abyss.maxUnlockedDepth, 0);
+    const maxDepth = safeInteger((Data.abyss || {}).maxDepth, 20);
+    const list = document.createElement("div");
+
+    list.className = "choice-list";
+    panel.appendChild(list);
+
+    for (let depth = 0; depth <= maxDepth; depth += 1) {
+      const modifiers = AS.State && AS.State.getAbyssModifiers ? AS.State.getAbyssModifiers(depth) : { rewardMultiplier: 1 };
+      const button = document.createElement("button");
+      const icon = createIcon(depth === 0 ? "0" : "◆", "choice-icon");
+      const body = document.createElement("span");
+      const name = document.createElement("strong");
+      const description = document.createElement("span");
+      const locked = depth > maxUnlockedDepth;
+
+      button.type = "button";
+      button.className = depth === selectedDepth ? "choice-button is-selected" : "choice-button";
+      if (locked) {
+        button.className += " is-locked";
+      }
+      button.disabled = locked;
+      body.className = "choice-body";
+      name.textContent = depth + "단계" + (depth === 0 ? " · 기본" : " · 보상 x" + safeNumber(modifiers.rewardMultiplier, 1).toFixed(2));
+      description.textContent = locked ? "잠김: " + (depth - 1) + "단계 클리어 필요" : "적 강화와 심연 조각 보상이 함께 증가합니다.";
+      body.appendChild(name);
+      body.appendChild(description);
+      button.appendChild(icon);
+      button.appendChild(body);
+      button.addEventListener("click", function () {
+        if (AS.State && AS.State.setSelectedDepth) {
+          AS.State.setSelectedDepth(depth);
+          AS.UI.renderStartOptions();
+          closeLobbyModal();
+        }
+      });
+      list.appendChild(button);
+    }
+  }
+
+  function appendMasteryRow(panel, label, item, entry) {
+    const required = AS.State && AS.State.getMasteryRequiredExp ? AS.State.getMasteryRequiredExp(entry.level) : 40;
+    const row = document.createElement("div");
+    const body = document.createElement("span");
+    const title = document.createElement("strong");
+    const description = document.createElement("span");
+
+    row.className = "choice-button";
+    body.className = "choice-body";
+    title.textContent = label + ": " + (item.name || "선택 없음") + " Lv." + safeInteger(entry.level, 1);
+    description.textContent = safeInteger(entry.level, 1) >= 10 ? "최대 숙련도" : "경험치 " + safeInteger(entry.exp, 0) + "/" + required;
+    body.appendChild(title);
+    body.appendChild(description);
+    row.appendChild(createIcon(item.icon || "⬢", "choice-icon"));
+    row.appendChild(body);
+    panel.appendChild(row);
+  }
+
+  function renderMasteryPanel(panel) {
+    const save = getSave();
+    const list = document.createElement("div");
+    const classItem = findById(Data.classes, save.selectedClassId, "wanderer");
+    const weaponItem = findById(Data.weapons, save.selectedWeaponId, "abyssBullet");
+    const zoneItem = findById(Data.zones, save.selectedZoneId, "riftGate");
+
+    list.className = "choice-list";
+    panel.appendChild(list);
+    appendMasteryRow(list, "클래스", classItem, AS.State.getMasteryEntry("classes", classItem.id));
+    appendMasteryRow(list, "무기", weaponItem, AS.State.getMasteryEntry("weapons", weaponItem.id));
+    appendMasteryRow(list, "구역", zoneItem, AS.State.getMasteryEntry("zones", zoneItem.id));
+  }
+
+  function renderUnlockPanel(panel) {
+    const rows = AS.State && AS.State.getUnlockRows ? AS.State.getUnlockRows() : [];
+    const list = document.createElement("div");
+
+    list.className = "choice-list";
+    panel.appendChild(list);
+
+    for (let i = 0; i < rows.length; i += 1) {
+      const row = document.createElement("div");
+      const body = document.createElement("span");
+      const title = document.createElement("strong");
+      const description = document.createElement("span");
+
+      row.className = rows[i].unlocked ? "choice-button is-selected" : "choice-button is-locked";
+      body.className = "choice-body";
+      title.textContent = (rows[i].unlocked ? "해금 · " : "잠김 · ") + rows[i].label + " · " + rows[i].name;
+      description.textContent = rows[i].unlocked ? "사용 가능" : rows[i].condition;
+      body.appendChild(title);
+      body.appendChild(description);
+      row.appendChild(createIcon(rows[i].unlocked ? "✓" : "◇", "choice-icon"));
+      row.appendChild(body);
+      list.appendChild(row);
+    }
+  }
+
+  function renderLobbyModal() {
+    const save = getSave();
+    const body = elements.lobbyModalBody;
+    let title = "";
+
+    if (!elements.lobbyModal || !body || !activeLobbyModal) {
+      return;
+    }
+
+    elements.lobbyModal.classList.remove("is-hidden");
+    body.innerHTML = "";
+
+    if (activeLobbyModal === "abyss") {
+      title = "심연 단계 선택";
+      renderAbyssPanel(body);
+    } else if (activeLobbyModal === "class") {
+      title = "클래스 선택";
+      renderSelectionPanel(body, "", Data.classes || [], save.selectedClassId || "wanderer", function (id) {
+        if (AS.State && AS.State.setSelectedClass) {
+          AS.State.setSelectedClass(id);
+        }
+        closeLobbyModal();
+      }, "class");
+    } else if (activeLobbyModal === "weapon") {
+      title = "시작 무기 선택";
+      renderSelectionPanel(body, "", Data.weapons || [], save.selectedWeaponId || "abyssBullet", function (id) {
+        if (AS.State && AS.State.setSelectedWeapon) {
+          AS.State.setSelectedWeapon(id);
+        }
+        closeLobbyModal();
+      }, "weapon");
+    } else if (activeLobbyModal === "zone") {
+      title = "구역 선택";
+      renderSelectionPanel(body, "", Data.zones || [], save.selectedZoneId || "riftGate", function (id) {
+        if (AS.State && AS.State.setSelectedZone) {
+          AS.State.setSelectedZone(id);
+        }
+        closeLobbyModal();
+      }, "zone");
+    } else if (activeLobbyModal === "challenge") {
+      title = "도전 선택";
+      renderSelectionPanel(body, "", Data.challenges || [], save.selectedChallengeId || "normal", function (id) {
+        if (AS.State && AS.State.setSelectedChallenge) {
+          AS.State.setSelectedChallenge(id);
+        }
+        closeLobbyModal();
+      });
+    } else if (activeLobbyModal === "mastery") {
+      title = "숙련도";
+      renderMasteryPanel(body);
+    } else if (activeLobbyModal === "upgrade") {
+      title = "영구 성장";
+      renderUpgradePanel(body);
+    } else if (activeLobbyModal === "unlock") {
+      title = "해금 진행";
+      renderUnlockPanel(body);
+    } else if (activeLobbyModal === "mission") {
+      title = "임무";
+      renderMissionPanel(body);
+    }
+
+    setText(elements.lobbyModalTitle, title);
+  }
+
+  function renderUpgradePanel(targetPanel) {
+    const save = getSave();
+    const panel = targetPanel || elements.upgradePanel;
     const upgrades = save.upgrades || {};
     const items = Data.permanentUpgrades || [];
 
@@ -432,6 +752,7 @@
       const item = items[i];
       const level = safeInteger(upgrades[item.id], 0);
       const cost = AS.State && AS.State.getUpgradeCost ? AS.State.getUpgradeCost(item.id) : 10 + level * 8;
+      const locked = item.advanced && AS.State && AS.State.isFeatureUnlocked ? !AS.State.isFeatureUnlocked(item.unlockFeature || "advancedUpgrades") : false;
       const button = document.createElement("button");
       const icon = createIcon(iconFor(item.id));
       const body = document.createElement("span");
@@ -443,10 +764,13 @@
       button.type = "button";
       applyRarityStyle(button, item, "upgrade");
       applyRarityStyle(icon, item, "upgrade");
-      button.disabled = level >= item.maxLevel || safeInteger(save.shards, 0) < cost;
+      if (locked) {
+        button.className += " is-locked";
+      }
+      button.disabled = locked || level >= item.maxLevel || safeInteger(save.shards, 0) < cost;
       body.className = "choice-body";
-      name.textContent = item.name + " Lv." + level;
-      description.textContent = "◆ " + cost + " · 최대 " + item.maxLevel;
+      name.textContent = (item.advanced ? "고급 · " : "") + item.name + " Lv." + level;
+      description.textContent = locked && AS.State && AS.State.getUnlockMessage ? "잠김: " + AS.State.getUnlockMessage("features", item.unlockFeature || "advancedUpgrades") : "◆ " + cost + " · 최대 " + item.maxLevel;
       body.appendChild(name);
       body.appendChild(badge);
       body.appendChild(description);
@@ -462,9 +786,9 @@
     }
   }
 
-  function renderMissionPanel() {
+  function renderMissionPanel(targetPanel) {
     const save = getSave();
-    const panel = elements.missionPanel;
+    const panel = targetPanel || elements.missionPanel;
     const missions = Data.missions || [];
     const completed = save.missions && save.missions.completed ? save.missions.completed : {};
     const progress = save.missions && save.missions.progress ? save.missions.progress : {};
@@ -802,6 +1126,8 @@
       elements.challengePanel = ensurePanel("challengePanel", "setup-panel");
       elements.upgradePanel = ensurePanel("upgradePanel", "setup-panel");
       elements.missionPanel = ensurePanel("missionPanel", "setup-panel");
+      elements.lobbySummaryPanel = ensurePanel("lobbySummaryPanel", "lobby-summary");
+      ensureLobbyModal();
       elements.pauseRestartButton = ensurePanelButton(elements.startPanel, "pauseRestartButton", "재시작", "secondary-button");
       elements.pauseLobbyButton = ensurePanelButton(elements.startPanel, "pauseLobbyButton", "로비로", "secondary-button");
       elements.gameOverLobbyButton = elements.gameOverLobbyButton || ensurePanelButton(elements.gameOverPanel, "gameOverLobbyButton", "로비로", "secondary-button");
@@ -957,6 +1283,14 @@
       lastOverlaySignature = "";
     },
 
+    openLobbyModal: function (type) {
+      openLobbyModal(type);
+    },
+
+    closeLobbyModal: function () {
+      closeLobbyModal();
+    },
+
     showLevelUp: function (abilities) {
       const signature = abilities.map(function (ability) {
         return ability.id;
@@ -1018,10 +1352,17 @@
         save.selectedWeaponId,
         save.selectedZoneId,
         save.selectedChallengeId,
+        safeInteger(save.abyss && save.abyss.selectedDepth, 0),
+        safeInteger(save.abyss && save.abyss.maxUnlockedDepth, 0),
         safeInteger(save.shards, 0),
         safeInteger(save.upgrades && save.upgrades.vitality, 0),
         safeInteger(save.upgrades && save.upgrades.power, 0),
         safeInteger(save.upgrades && save.upgrades.growth, 0),
+        safeInteger(save.upgrades && save.upgrades.masteryTraining, 0),
+        safeInteger(save.upgrades && save.upgrades.combatSense, 0),
+        safeInteger(save.upgrades && save.upgrades.abyssAdaptation, 0),
+        JSON.stringify(save.mastery || {}),
+        JSON.stringify(save.unlocks || {}),
         JSON.stringify(save.missions || {})
       ].join("|");
 
@@ -1031,32 +1372,14 @@
 
       lastSetupSignature = signature;
 
-      renderSelectionPanel(elements.classPanel, "⬟ 클래스", Data.classes || [], save.selectedClassId || "wanderer", function (id) {
-        if (AS.State && AS.State.setSelectedClass) {
-          AS.State.setSelectedClass(id);
-        }
-      });
-
-      renderSelectionPanel(elements.weaponPanel, "● 시작 무기", Data.weapons || [], save.selectedWeaponId || "abyssBullet", function (id) {
-        if (AS.State && AS.State.setSelectedWeapon) {
-          AS.State.setSelectedWeapon(id);
-        }
-      });
-
-      renderSelectionPanel(elements.zonePanel, "◇ 구역", Data.zones || [], save.selectedZoneId || "riftGate", function (id) {
-        if (AS.State && AS.State.setSelectedZone) {
-          AS.State.setSelectedZone(id);
-        }
-      });
-
-      renderSelectionPanel(elements.challengePanel, "○ 도전", Data.challenges || [], save.selectedChallengeId || "normal", function (id) {
-        if (AS.State && AS.State.setSelectedChallenge) {
-          AS.State.setSelectedChallenge(id);
-        }
-      });
-
-      renderUpgradePanel();
-      renderMissionPanel();
+      renderLobbySummary(save);
+      setElementVisible(elements.classPanel, false);
+      setElementVisible(elements.weaponPanel, false);
+      setElementVisible(elements.zonePanel, false);
+      setElementVisible(elements.challengePanel, false);
+      setElementVisible(elements.upgradePanel, false);
+      setElementVisible(elements.missionPanel, false);
+      renderLobbyModal();
     },
 
     updateResultMeta: function (target, run) {
@@ -1071,12 +1394,17 @@
       const bonuses = (run.buildBonuses || []).map(function (bonus) {
         return bonus.name;
       }).join(", ") || "없음";
+      const unlocks = (run.newlyUnlocked || []).map(function (item) {
+        return item.name;
+      }).join(", ") || "없음";
       const resultText = run.mode === (states.clear || "clear") ? "런 클리어" : "게임 오버";
 
       setText(target, [
         resultText + " · ⏱ " + formatTime(run.time) + " · ☠ " + safeInteger(run.kills, 0) + " · Lv " + safeInteger(run.level, 1),
-        "⬟ " + classItem.name + " / ● " + weaponItem.name + " / ◇ " + zoneItem.name + " / ○ " + challengeItem.name + " x" + safeNumber(run.rewardMultiplier, 1).toFixed(2),
+        "⬟ " + classItem.name + " / ● " + weaponItem.name + " / ◇ " + zoneItem.name + " / ○ " + challengeItem.name + " / 심연 " + safeInteger(run.selectedDepth, 0) + " x" + safeNumber(run.rewardMultiplier, 1).toFixed(2),
         "◆ +" + safeInteger(run.shardReward, 0) + " · 임무 +" + safeInteger(run.missionShardReward, 0) + " · 보유 " + safeInteger(save.shards, 0),
+        "숙련도 +" + safeInteger(run.masteryExpGained, 0) + (run.depthUnlocked ? " · 다음 심연 단계 해금" : ""),
+        "신규 해금: " + unlocks,
         "엘리트 처치: " + safeInteger(run.eliteKills, 0),
         "유물: " + relics,
         "빌드: " + bonuses
