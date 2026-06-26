@@ -52,7 +52,7 @@
 
   function createDefaultSave() {
     return {
-      version: 6,
+      version: 7,
       bestTime: 0,
       bestKills: 0,
       totalRuns: 0,
@@ -62,6 +62,7 @@
       selectedWeaponId: "abyssBullet",
       selectedZoneId: "riftGate",
       selectedChallengeId: "normal",
+      selectedRunModeId: "survival",
       selectedEventId: "normal",
       upgrades: {
         vitality: 0,
@@ -340,6 +341,7 @@
       selectedWeaponId: "abyssBullet",
       selectedZoneId: "riftGate",
       selectedChallengeId: findById(Data.challenges, typeof source.selectedChallengeId === "string" ? source.selectedChallengeId : base.selectedChallengeId, "normal").id || "normal",
+      selectedRunModeId: findById(Data.runModes, typeof source.selectedRunModeId === "string" ? source.selectedRunModeId : base.selectedRunModeId, "survival").id || "survival",
       selectedEventId: findById(Data.events, typeof source.selectedEventId === "string" ? source.selectedEventId : base.selectedEventId, "normal").id || "normal",
       upgrades: sanitizeUpgradeMap(source.upgrades),
       abyss: sanitizeAbyssMap(source.abyss),
@@ -384,6 +386,10 @@
 
   function getSelectedEvent(save) {
     return findById(Data.events, save && save.selectedEventId, "normal");
+  }
+
+  function getSelectedRunMode(save) {
+    return findById(Data.runModes, save && save.selectedRunModeId, "survival");
   }
 
   function getEventModifiers(save) {
@@ -712,13 +718,15 @@
     const save = AS.State && AS.State.getSave ? AS.State.getSave() : sanitizeSave(null);
     const challenge = getChallenge(save);
     const event = getSelectedEvent(save);
+    const runMode = getSelectedRunMode(save);
     const zone = findById(Data.zones, save.selectedZoneId, "riftGate");
     const modifiers = combineRunModifiers(save);
+    const isBossRush = runMode.id === "bossRush";
     const selectedDepth = clamp(safeInteger(save.abyss && save.abyss.selectedDepth, 0), 0, safeInteger(save.abyss && save.abyss.maxUnlockedDepth, 0));
     const abyssModifiers = getAbyssModifiers(selectedDepth, save);
-    const runDuration = Math.max(1, safeNumber(modifiers.runDuration, safeNumber(game.runDuration, 180)));
-    const bossSpawnTime = Math.max(1, safeNumber(modifiers.bossSpawnTime, safeNumber(game.bossSpawnTime, 120)));
-    const rewardMultiplier = clamp(safeNumber(challenge.rewardMultiplier, 1) * safeNumber(event.rewardMultiplier, 1) * safeNumber(zone.rewardMultiplier, 1) * safeNumber(abyssModifiers.rewardMultiplier, 1) * getRewardMasteryMultiplier(save), 0, 5);
+    const runDuration = isBossRush ? Math.max(60, safeNumber(game.bossRushRunDuration, 240)) : Math.max(1, safeNumber(modifiers.runDuration, safeNumber(game.runDuration, 180)));
+    const bossSpawnTime = isBossRush ? Math.max(0.2, safeNumber(game.bossRushSpawnDelay, 1.2)) : Math.max(1, safeNumber(modifiers.bossSpawnTime, safeNumber(game.bossSpawnTime, 120)));
+    const rewardMultiplier = clamp(safeNumber(challenge.rewardMultiplier, 1) * safeNumber(runMode.rewardMultiplier, 1) * safeNumber(event.rewardMultiplier, 1) * safeNumber(zone.rewardMultiplier, 1) * safeNumber(abyssModifiers.rewardMultiplier, 1) * getRewardMasteryMultiplier(save), 0, 5);
     const viewportWidth = Math.max(1, safeNumber(game.width, 360));
     const viewportHeight = Math.max(1, safeNumber(game.height, 560));
     const worldWidth = Math.max(viewportWidth, safeNumber(game.worldWidth, viewportWidth));
@@ -737,6 +745,8 @@
       selectedWeaponId: save.selectedWeaponId || "abyssBullet",
       selectedZoneId: save.selectedZoneId || "riftGate",
       selectedChallengeId: save.selectedChallengeId || "normal",
+      selectedRunModeId: save.selectedRunModeId || "survival",
+      selectedRunModeName: runMode.name || "생존",
       selectedEventId: save.selectedEventId || "normal",
       selectedEventName: event.name || "일반",
       selectedDepth: selectedDepth,
@@ -774,6 +784,13 @@
       },
       bossSpawned: false,
       bossDefeated: false,
+      bossRush: isBossRush,
+      bossRushIndex: 0,
+      bossRushDefeated: 0,
+      bossRushBossCount: isBossRush ? clamp(safeInteger(game.bossRushBossCount, 4), 1, 8) : 0,
+      bossRushActiveBoss: false,
+      bossRushRewardCount: 0,
+      bossRushSpawnTimer: isBossRush ? Math.max(0.2, safeNumber(game.bossRushSpawnDelay, 1.2)) : 0,
       finalWaveStarted: false,
       finalWaveTimer: 0,
       bossContactTimer: 0,
@@ -1212,6 +1229,13 @@
       return save;
     },
 
+    setSelectedRunMode: function (runModeId) {
+      const save = this.getSave();
+      save.selectedRunModeId = findById(Data.runModes, runModeId, "survival").id || "survival";
+      this.writeSave();
+      return save;
+    },
+
     setSelectedEvent: function (eventId) {
       const save = this.getSave();
       save.selectedEventId = findById(Data.events, eventId, "normal").id || "normal";
@@ -1316,6 +1340,10 @@
 
     getSelectedEvent: function () {
       return getSelectedEvent(this.getSave());
+    },
+
+    getSelectedRunMode: function () {
+      return getSelectedRunMode(this.getSave());
     },
 
     getEventModifiers: function () {
