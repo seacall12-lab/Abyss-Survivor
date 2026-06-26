@@ -21,7 +21,12 @@
       eliteChance: 0.08,
       maxEliteEnemies: 3,
       spawnPadding: 40,
-      targetViewportMargin: 64
+      targetViewportMargin: 40,
+      bossContactTickInterval: 0.7,
+      meleeBossContactDamageMultiplier: 0.7,
+      finalWaveSpawnMultiplier: 0.75,
+      finalWaveEliteChanceBonus: 0.05,
+      finalWaveMaxEnemiesBonus: 16
     },
 
     states: {
@@ -512,11 +517,11 @@
     },
 
     waves: [
-      { start: 0, end: 30, spawnInterval: 0.98, weights: { normal: 80, fast: 20, tank: 0 } },
-      { start: 30, end: 60, spawnInterval: 0.77, weights: { normal: 50, fast: 38, tank: 12 } },
-      { start: 60, end: 90, spawnInterval: 0.58, weights: { normal: 36, fast: 30, tank: 34 } },
-      { start: 90, end: 120, spawnInterval: 0.48, weights: { normal: 30, fast: 40, tank: 30 } },
-      { start: 120, end: 180, spawnInterval: 0.62, weights: { normal: 38, fast: 36, tank: 26 } }
+      { start: 0, end: 30, spawnInterval: 0.92, weights: { normal: 80, fast: 20, tank: 0 } },
+      { start: 30, end: 60, spawnInterval: 0.68, weights: { normal: 48, fast: 40, tank: 12 } },
+      { start: 60, end: 90, spawnInterval: 0.5, weights: { normal: 34, fast: 32, tank: 34 } },
+      { start: 90, end: 120, spawnInterval: 0.4, weights: { normal: 28, fast: 42, tank: 30 } },
+      { start: 120, end: 180, spawnInterval: 0.5, weights: { normal: 34, fast: 40, tank: 26 } }
     ],
 
     challenges: [
