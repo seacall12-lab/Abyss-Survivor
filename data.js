@@ -12,15 +12,16 @@
       worldHeight: 1680,
       runDuration: 180,
       bossSpawnTime: 120,
-      maxEnemies: 86,
+      maxEnemies: 104,
       maxProjectiles: 112,
       maxGems: 120,
       maxEffects: 64,
       maxDamageTexts: 40,
       maxMines: 30,
-      eliteChance: 0.06,
+      eliteChance: 0.08,
       maxEliteEnemies: 3,
-      spawnPadding: 40
+      spawnPadding: 40,
+      targetViewportMargin: 64
     },
 
     states: {
@@ -30,6 +31,28 @@
       levelup: "levelup",
       gameover: "gameover",
       clear: "clear"
+    },
+
+    abyss: {
+      maxDepth: 20,
+      enemyHpPerDepth: 0.08,
+      enemySpeedPerDepth: 0.025,
+      enemyDamagePerDepth: 0.05,
+      bossHpPerDepth: 0.1,
+      eliteChancePerDepth: 0.006,
+      rewardPerDepth: 0.08,
+      maxEnemyHpMultiplier: 3,
+      maxEnemySpeedMultiplier: 1.6,
+      maxEnemyDamageMultiplier: 2.5,
+      maxBossHpMultiplier: 3.5,
+      maxEliteChanceBonus: 0.15,
+      maxRewardMultiplier: 2.8
+    },
+
+    mastery: {
+      maxLevel: 10,
+      baseRequiredExp: 40,
+      requiredExpPerLevel: 30
     },
 
     player: {
@@ -290,6 +313,33 @@
         description: "경험치 획득 범위가 증가합니다.",
         maxLevel: 10,
         effectPerLevel: 3
+      },
+      {
+        id: "masteryTraining",
+        name: "숙련 훈련",
+        description: "숙련도 경험치 획득량이 증가합니다.",
+        maxLevel: 10,
+        effectPerLevel: 3,
+        advanced: true,
+        unlockFeature: "advancedUpgrades"
+      },
+      {
+        id: "combatSense",
+        name: "전투 감각",
+        description: "엘리트와 보스에게 주는 피해가 증가합니다.",
+        maxLevel: 10,
+        effectPerLevel: 2,
+        advanced: true,
+        unlockFeature: "advancedUpgrades"
+      },
+      {
+        id: "abyssAdaptation",
+        name: "심연 적응",
+        description: "심연 단계에서 증가하는 피해 부담을 줄입니다.",
+        maxLevel: 10,
+        effectPerLevel: 1.5,
+        advanced: true,
+        unlockFeature: "advancedUpgrades"
       }
     ],
 
@@ -462,11 +512,11 @@
     },
 
     waves: [
-      { start: 0, end: 30, spawnInterval: 1.08, weights: { normal: 80, fast: 20, tank: 0 } },
-      { start: 30, end: 60, spawnInterval: 0.9, weights: { normal: 54, fast: 34, tank: 12 } },
-      { start: 60, end: 90, spawnInterval: 0.7, weights: { normal: 42, fast: 28, tank: 30 } },
-      { start: 90, end: 120, spawnInterval: 0.6, weights: { normal: 36, fast: 36, tank: 28 } },
-      { start: 120, end: 180, spawnInterval: 0.76, weights: { normal: 42, fast: 34, tank: 24 } }
+      { start: 0, end: 30, spawnInterval: 0.98, weights: { normal: 80, fast: 20, tank: 0 } },
+      { start: 30, end: 60, spawnInterval: 0.77, weights: { normal: 50, fast: 38, tank: 12 } },
+      { start: 60, end: 90, spawnInterval: 0.58, weights: { normal: 36, fast: 30, tank: 34 } },
+      { start: 90, end: 120, spawnInterval: 0.48, weights: { normal: 30, fast: 40, tank: 30 } },
+      { start: 120, end: 180, spawnInterval: 0.62, weights: { normal: 38, fast: 36, tank: 26 } }
     ],
 
     challenges: [
