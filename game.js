@@ -141,10 +141,12 @@
 
   function getMaxEnemies(run) {
     const game = Data.game || {};
+    const modifiers = getChallengeModifiers(run);
     const baseMax = Math.max(1, safeNumber(game.maxEnemies, 80));
     const bonus = isFinalWaveActive(run) ? Math.max(0, safeNumber(game.finalWaveMaxEnemiesBonus, 0)) : 0;
+    const eventBonus = Math.max(0, safeNumber(modifiers.maxEnemiesBonus, 0));
 
-    return clamp(baseMax + bonus, 1, 120);
+    return clamp(baseMax + bonus + eventBonus, 1, 140);
   }
 
   function isInsideTargetViewport(run, enemy, margin) {
@@ -383,6 +385,7 @@
     const zone = getZone(run);
     const modifiers = ["giant", "swift", "toxic", "splitter", "volatile", "armored", "regen", "summoner"];
     const elapsed = safeNumber(run && run.time, 0);
+    const runModifiers = getChallengeModifiers(run);
     const maxElites = Math.max(0, safeNumber(game.maxEliteEnemies, 3) + (isFinalWaveActive(run) ? 1 : 0));
     const baseChance = clamp(safeNumber(game.eliteChance, 0.07), 0, 0.25);
     const challengeBonus = run && run.selectedChallengeId !== "normal" ? 0.02 : 0;
@@ -390,7 +393,8 @@
     const abyssBonus = safeNumber(run && run.abyssModifiers && run.abyssModifiers.eliteChanceBonus, 0);
     const splitterBonus = safeNumber(zone.splitterChanceBonus, 0);
     const finalWaveBonus = isFinalWaveActive(run) ? safeNumber(game.finalWaveEliteChanceBonus, 0.05) : 0;
-    const chance = clamp(baseChance + challengeBonus + zoneBonus + abyssBonus + finalWaveBonus, 0, 0.4);
+    const eventBonus = safeNumber(runModifiers.eliteChanceBonus, 0);
+    const chance = clamp(baseChance + challengeBonus + zoneBonus + abyssBonus + finalWaveBonus + eventBonus, 0, 0.45);
     let modifier;
 
     if (!enemy || enemy.isBoss || elapsed < 60 || countEliteEnemies(run) >= maxElites || Math.random() > chance) {
@@ -1222,10 +1226,12 @@
 
   function shouldOfferRelic(run) {
     const offerCount = Math.max(0, Math.floor(safeNumber(run && run.relicOfferCount, 0)));
+    const modifiers = getChallengeModifiers(run);
+    const maxOffers = 2 + Math.max(0, Math.floor(safeNumber(modifiers.relicOfferBonus, 0)));
     const requiredLevel = offerCount === 0 ? 6 : 11;
     const relics = Data.relics || [];
 
-    return !!run && offerCount < 2 && relics.length > 0 && safeNumber(run.level, 1) >= requiredLevel;
+    return !!run && offerCount < maxOffers && relics.length > 0 && safeNumber(run.level, 1) >= requiredLevel;
   }
 
   function chooseRelics(run, count) {
@@ -1316,9 +1322,13 @@
 
   function dropGem(run, enemy) {
     const game = Data.game || {};
+    const modifiers = getChallengeModifiers(run);
     const maxGems = Math.max(1, safeNumber(game.maxGems, 120));
+    const gemExpMultiplier = Math.max(0.1, safeNumber(modifiers.gemExpMultiplier, 1));
+    const gemDropBonus = clamp(safeNumber(modifiers.gemDropBonus, 0), 0, 0.75);
+    const expValue = Math.max(0, safeNumber(enemy.exp, 0) * gemExpMultiplier);
 
-    if (run.gems.length >= maxGems || safeNumber(enemy.exp, 0) <= 0) {
+    if (run.gems.length >= maxGems || expValue <= 0) {
       return;
     }
 
@@ -1326,8 +1336,17 @@
       x: safeNumber(enemy.x, 0),
       y: safeNumber(enemy.y, 0),
       radius: 5,
-      exp: Math.max(0, safeNumber(enemy.exp, 0))
+      exp: expValue
     });
+
+    if (run.gems.length < maxGems && gemDropBonus > 0 && Math.random() < gemDropBonus) {
+      run.gems.push({
+        x: safeNumber(enemy.x, 0) + (Math.random() * 14 - 7),
+        y: safeNumber(enemy.y, 0) + (Math.random() * 14 - 7),
+        radius: 4,
+        exp: Math.max(1, expValue * 0.5)
+      });
+    }
   }
 
   function defeatEnemy(run, enemy, index) {
@@ -1335,6 +1354,7 @@
     run.kills = Math.max(0, Math.floor(safeNumber(run.kills, 0))) + 1;
     dropGem(run, enemy);
     healPlayer(run, safeNumber(player.lifeStealOnKill, 0) * safeNumber(player.killHealMultiplier, 1));
+    healPlayer(run, safeNumber(getChallengeModifiers(run).healOnKill, 0));
 
     if (enemy.elite) {
       run.eliteKills = Math.max(0, Math.floor(safeNumber(run.eliteKills, 0))) + 1;
@@ -1862,32 +1882,36 @@
   function applyRelicEffect(run, relic) {
     const player = run.player;
     const effect = relic.effect || {};
+    const relicEffectMultiplier = Math.max(0.1, safeNumber(getChallengeModifiers(run).relicEffectMultiplier, 1));
     const hpRatio = safeNumber(player.hp, 0) / Math.max(1, safeNumber(player.maxHp, 1));
+    function boostedEffectValue(key, fallback) {
+      return safeNumber(effect[key], fallback) * relicEffectMultiplier;
+    }
 
     if (!run.relics) {
       run.relics = [];
     }
 
     run.relics.push({ id: relic.id, name: relic.name, rarity: relic.rarity || "일반" });
-    player.maxHp = Math.max(1, safeNumber(player.maxHp, 1) + safeNumber(effect.maxHp, 0));
+    player.maxHp = Math.max(1, safeNumber(player.maxHp, 1) + boostedEffectValue("maxHp", 0));
     player.maxHp = Math.max(1, player.maxHp * safeNumber(effect.maxHpMultiplier, 1));
-    player.hp = clamp(player.maxHp * clamp(hpRatio, 0, 1) + Math.max(0, safeNumber(effect.maxHp, 0)), 1, player.maxHp);
-    player.speed = Math.max(0, (safeNumber(player.speed, 0) + safeNumber(effect.speed, 0)) * safeNumber(effect.speedMultiplier, 1));
-    player.damage = Math.max(1, safeNumber(player.damage, 1) + safeNumber(effect.damage, 0));
-    player.attackCooldown = Math.max(0.15, safeNumber(player.attackCooldown, 0.5) + safeNumber(effect.attackCooldown, 0));
-    player.projectileSpeed = Math.max(0, safeNumber(player.projectileSpeed, 0) + safeNumber(effect.projectileSpeed, 0));
-    player.projectileRadius = Math.max(1, safeNumber(player.projectileRadius, 1) + safeNumber(effect.projectileRadius, 0));
-    player.pickupRadius = Math.max(1, safeNumber(player.pickupRadius, 1) + safeNumber(effect.pickupRadius, 0));
-    player.invincibleTime = Math.max(0, safeNumber(player.invincibleTime, 0) + safeNumber(effect.invincibleTime, 0));
+    player.hp = clamp(player.maxHp * clamp(hpRatio, 0, 1) + Math.max(0, boostedEffectValue("maxHp", 0)), 1, player.maxHp);
+    player.speed = Math.max(0, (safeNumber(player.speed, 0) + boostedEffectValue("speed", 0)) * safeNumber(effect.speedMultiplier, 1));
+    player.damage = Math.max(1, safeNumber(player.damage, 1) + boostedEffectValue("damage", 0));
+    player.attackCooldown = Math.max(0.15, safeNumber(player.attackCooldown, 0.5) + boostedEffectValue("attackCooldown", 0));
+    player.projectileSpeed = Math.max(0, safeNumber(player.projectileSpeed, 0) + boostedEffectValue("projectileSpeed", 0));
+    player.projectileRadius = Math.max(1, safeNumber(player.projectileRadius, 1) + boostedEffectValue("projectileRadius", 0));
+    player.pickupRadius = Math.max(1, safeNumber(player.pickupRadius, 1) + boostedEffectValue("pickupRadius", 0));
+    player.invincibleTime = Math.max(0, safeNumber(player.invincibleTime, 0) + boostedEffectValue("invincibleTime", 0));
     player.damageTakenMultiplier = Math.max(0.1, safeNumber(player.damageTakenMultiplier, 1) * safeNumber(effect.damageTakenMultiplier, 1));
     player.expMultiplier = Math.max(0.1, safeNumber(player.expMultiplier, 1) * safeNumber(effect.expMultiplier, 1));
-    player.gemHealChance = clamp(safeNumber(player.gemHealChance, 0) + safeNumber(effect.gemHealChance, 0), 0, 1);
-    player.gemHealAmount = Math.max(0, safeNumber(player.gemHealAmount, 0) + safeNumber(effect.gemHealAmount, 0));
-    player.lifeStealOnKill = Math.max(0, safeNumber(player.lifeStealOnKill, 0) + safeNumber(effect.lifeStealOnKill, 0));
+    player.gemHealChance = clamp(safeNumber(player.gemHealChance, 0) + boostedEffectValue("gemHealChance", 0), 0, 1);
+    player.gemHealAmount = Math.max(0, safeNumber(player.gemHealAmount, 0) + boostedEffectValue("gemHealAmount", 0));
+    player.lifeStealOnKill = Math.max(0, safeNumber(player.lifeStealOnKill, 0) + boostedEffectValue("lifeStealOnKill", 0));
     player.killHealMultiplier = Math.max(0.1, safeNumber(player.killHealMultiplier, 1) * safeNumber(effect.killHealMultiplier, 1));
-    player.mineBonus = Math.max(0, safeInteger(player.mineBonus, 0) + safeInteger(effect.mineBonus, 0));
-    player.chainBonus = Math.max(0, safeInteger(player.chainBonus, 0) + safeInteger(effect.chainBonus, 0));
-    player.projectilePierceBonus = Math.max(0, safeInteger(player.projectilePierceBonus, 0) + safeInteger(effect.projectilePierceBonus, 0));
+    player.mineBonus = Math.max(0, safeInteger(player.mineBonus, 0) + Math.floor(boostedEffectValue("mineBonus", 0)));
+    player.chainBonus = Math.max(0, safeInteger(player.chainBonus, 0) + Math.floor(boostedEffectValue("chainBonus", 0)));
+    player.projectilePierceBonus = Math.max(0, safeInteger(player.projectilePierceBonus, 0) + Math.floor(boostedEffectValue("projectilePierceBonus", 0)));
     player.meleeDamageMultiplier = Math.max(0.1, safeNumber(player.meleeDamageMultiplier, 1) * safeNumber(effect.meleeDamageMultiplier, 1));
     player.lineDamageMultiplier = Math.max(0.1, safeNumber(player.lineDamageMultiplier, 1) * safeNumber(effect.lineDamageMultiplier, 1));
     player.spreadDamageMultiplier = Math.max(0.1, safeNumber(player.spreadDamageMultiplier, 1) * safeNumber(effect.spreadDamageMultiplier, 1));
