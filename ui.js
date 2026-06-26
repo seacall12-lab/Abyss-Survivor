@@ -411,7 +411,7 @@
     for (let i = 0; i < items.length; i += 1) {
       const item = items[i];
       const button = document.createElement("button");
-      const icon = createIcon(iconFor(item.id));
+      const icon = createIcon(item.icon || iconFor(item.id));
       const body = document.createElement("span");
       const name = document.createElement("strong");
       const badge = createRarityBadge(item, category);
@@ -540,6 +540,7 @@
     appendLobbySummaryButton(panel, "●", "무기", selectedSummary(Data.weapons || [], save.selectedWeaponId, "abyssBullet"), "weapon");
     appendLobbySummaryButton(panel, "◇", "구역", selectedSummary(Data.zones || [], save.selectedZoneId, "riftGate"), "zone");
     appendLobbySummaryButton(panel, "○", "도전", selectedSummary(Data.challenges || [], save.selectedChallengeId, "normal"), "challenge");
+    appendLobbySummaryButton(panel, "◇", "이벤트", selectedSummary(Data.events || [], save.selectedEventId, "normal"), "event");
     appendLobbySummaryButton(panel, "⬢", "숙련도", getMasterySummary(save), "mastery");
     appendLobbySummaryButton(panel, "◆", "성장", { name: "보유 " + safeInteger(save.shards, 0), description: "체력 " + safeInteger(upgrades.vitality, 0) + " · 공격 " + safeInteger(upgrades.power, 0) + " · 수집 " + safeInteger(upgrades.growth, 0) }, "upgrade");
     appendLobbySummaryButton(panel, "▣", "해금", getUnlockSummary(), "unlock");
@@ -699,6 +700,14 @@
         }
         closeLobbyModal();
       });
+    } else if (activeLobbyModal === "event") {
+      title = "이벤트 런 선택";
+      renderSelectionPanel(body, "", Data.events || [], save.selectedEventId || "normal", function (id) {
+        if (AS.State && AS.State.setSelectedEvent) {
+          AS.State.setSelectedEvent(id);
+        }
+        closeLobbyModal();
+      }, "event");
     } else if (activeLobbyModal === "mastery") {
       title = "숙련도";
       renderMasteryPanel(body);
@@ -1354,6 +1363,7 @@
         save.selectedWeaponId,
         save.selectedZoneId,
         save.selectedChallengeId,
+        save.selectedEventId,
         safeInteger(save.abyss && save.abyss.selectedDepth, 0),
         safeInteger(save.abyss && save.abyss.maxUnlockedDepth, 0),
         safeInteger(save.shards, 0),
@@ -1389,6 +1399,7 @@
       const classItem = findById(Data.classes, run.selectedClassId || save.selectedClassId, "wanderer");
       const zoneItem = findById(Data.zones, run.selectedZoneId || save.selectedZoneId, "riftGate");
       const challengeItem = findById(Data.challenges, run.selectedChallengeId || save.selectedChallengeId, "normal");
+      const eventItem = findById(Data.events, run.selectedEventId || save.selectedEventId, "normal");
       const weaponItem = findById(Data.weapons, run.selectedWeaponId || save.selectedWeaponId, "abyssBullet");
       const runMissions = run.runMissions || [];
       const missionText = runMissions.map(function (mission) {
@@ -1407,7 +1418,7 @@
 
       setText(target, [
         resultText + " · ⏱ " + formatTime(run.time) + " · ☠ " + safeInteger(run.kills, 0) + " · Lv " + safeInteger(run.level, 1),
-        "⬟ " + classItem.name + " / ● " + weaponItem.name + " / ◇ " + zoneItem.name + " / ○ " + challengeItem.name + " / 심연 " + safeInteger(run.selectedDepth, 0) + " x" + safeNumber(run.rewardMultiplier, 1).toFixed(2),
+        "⬟ " + classItem.name + " / ● " + weaponItem.name + " / ◇ " + zoneItem.name + " / ○ " + challengeItem.name + " / 이벤트 " + (eventItem.name || "일반") + " / 심연 " + safeInteger(run.selectedDepth, 0) + " x" + safeNumber(run.rewardMultiplier, 1).toFixed(2),
         "◆ +" + safeInteger(run.shardReward, 0) + " · 임무 +" + safeInteger(run.missionShardReward, 0) + " · 보유 " + safeInteger(save.shards, 0),
         "3분 생존: " + (run.mode === (states.clear || "clear") ? "성공" : "실패") + " · 보스 처치: " + (run.bossDefeated ? "성공" : "미달성"),
         "임무: " + missionText,
