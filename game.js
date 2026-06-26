@@ -87,7 +87,41 @@
   function getBossData(run) {
     const zone = getZone(run);
     const bosses = Data.bosses || {};
+    if (isBossRushRun(run) && run && run.bossRushBossId && bosses[run.bossRushBossId]) {
+      return bosses[run.bossRushBossId];
+    }
     return bosses[zone.bossId] || bosses.watcher || getEnemyData("boss");
+  }
+
+  function isBossRushRun(run) {
+    return !!(run && (run.bossRush || run.selectedRunModeId === "bossRush"));
+  }
+
+  function getBossRushBossIds() {
+    const bosses = Data.bosses || {};
+    const preferred = ["watcher", "swampGuardian", "coreDevourer", "sanctumBreaker", "deadLord", "stormDevourer"];
+    const result = [];
+    let key;
+
+    for (let i = 0; i < preferred.length; i += 1) {
+      if (bosses[preferred[i]]) {
+        result.push(preferred[i]);
+      }
+    }
+
+    for (key in bosses) {
+      if (Object.prototype.hasOwnProperty.call(bosses, key) && result.indexOf(key) < 0) {
+        result.push(key);
+      }
+    }
+
+    return result.length ? result : ["watcher"];
+  }
+
+  function getBossRushBossId(run) {
+    const ids = getBossRushBossIds();
+    const index = safeInteger(run && run.bossRushIndex, 0);
+    return ids[index % ids.length] || ids[0];
   }
 
   function getWeapon(run) {
@@ -145,6 +179,10 @@
     const baseMax = Math.max(1, safeNumber(game.maxEnemies, 80));
     const bonus = isFinalWaveActive(run) ? Math.max(0, safeNumber(game.finalWaveMaxEnemiesBonus, 0)) : 0;
     const eventBonus = Math.max(0, safeNumber(modifiers.maxEnemiesBonus, 0));
+
+    if (isBossRushRun(run)) {
+      return clamp(Math.max(24, safeNumber(game.bossRushMaxEnemies, 46)) + eventBonus, 1, 90);
+    }
 
     return clamp(baseMax + bonus + eventBonus, 1, 140);
   }
@@ -209,6 +247,8 @@
     const weaponTags = Array.isArray(weapon.tags) ? weapon.tags : [];
     const hasProjectileTag = weaponTags.indexOf("projectile") >= 0;
     const hasAbyssTag = weaponTags.indexOf("abyss") >= 0;
+    const hasSplitShot = !!(run && run.evolutions && run.evolutions.splitShot);
+    const hasPiercingShot = !!(run && run.evolutions && run.evolutions.piercingShot);
     const hasBulletBonus = hasBuildBonus(run, "bulletExpert") && hasProjectileTag;
     const hasExplosionBonus = hasBuildBonus(run, "explosionBuild") || hasBuildBonus(run, "explosionAddict");
     const hasAbyssBonus = hasBuildBonus(run, "abyssContractor") && hasAbyssTag;
@@ -223,40 +263,41 @@
       projectileCount: clamp(safeInteger(weapon.projectileCount, 1) + countGrowth, 1, 9)
     };
 
-    stats.orbitCount = clamp(1 + getWeaponGrowth(run, "orbitCount") + Math.floor(countGrowth / 2), 1, 5);
+    stats.orbitCount = clamp(1 + getWeaponGrowth(run, "orbitCount") + Math.floor(countGrowth / 2) + (hasSplitShot ? 1 : 0), 1, 6);
     stats.orbitRadius = clamp((46 * (0.85 + sizeScale * 0.15) + getWeaponGrowth(run, "orbitRadius") * 5) * weaponMasterySize, 34, 82);
     stats.orbitBladeRadius = clamp(8 * sizeScale * (1 + getWeaponGrowth(run, "orbitPower") * 0.08) * weaponMasterySize, 5, 21);
     stats.orbitAngularSpeed = clamp(3.3 * speedScale * (1 + getWeaponGrowth(run, "orbitSpeed") * 0.16), 1.8, 8);
-    stats.orbitDamage = clamp(stats.damage * (1 + getWeaponGrowth(run, "orbitPower") * 0.12), 2, 999);
+    stats.orbitDamage = clamp(stats.damage * (1 + getWeaponGrowth(run, "orbitPower") * 0.12 + (hasPiercingShot ? 0.08 : 0)), 2, 999);
     stats.orbitHitCooldown = clamp(0.45 * (stats.cooldown / 0.55), 0.16, 0.55);
 
     stats.lightningRange = clamp(160 + speedGrowth * 5, 140, 240);
-    stats.chainCount = clamp(safeInteger(weapon.chainCount, 3) + getWeaponGrowth(run, "chainCount") + safeInteger(player.chainBonus, 0), 1, 6);
-    stats.chainBeamCount = clamp(1 + getWeaponGrowth(run, "chainBeamCount") + Math.floor(countGrowth / 2), 1, 3);
+    stats.chainCount = clamp(safeInteger(weapon.chainCount, 3) + getWeaponGrowth(run, "chainCount") + safeInteger(player.chainBonus, 0) + (hasPiercingShot ? 1 : 0), 1, 7);
+    stats.chainBeamCount = clamp(1 + getWeaponGrowth(run, "chainBeamCount") + Math.floor(countGrowth / 2) + (hasSplitShot ? 1 : 0), 1, 4);
     stats.chainWidth = clamp(3 * sizeScale + getWeaponGrowth(run, "chainWidth") * 1.3, 2, 9);
     stats.chainRange = clamp(96 * (0.92 + speedScale * 0.08), 84, 160);
     stats.chainDamage = clamp(stats.damage * 0.5 * (1 + getWeaponGrowth(run, "chainPower") * 0.08 + getWeaponGrowth(run, "chainWidth") * 0.05) * safeNumber(player.chainDamageMultiplier, 1), 1, 999);
 
-    stats.mineCount = clamp(1 + getWeaponGrowth(run, "mineCount") + safeInteger(player.mineBonus, 0) + (hasExplosionBonus ? 1 : 0), 1, 4);
-    stats.mineRadius = clamp(safeNumber(weapon.radius, 48) * sizeScale * safeNumber(player.mineRadiusMultiplier, 1) * safeNumber(player.explosionRadiusMultiplier, 1) * (1 + getWeaponGrowth(run, "mineRadius") * 0.12 + (hasExplosionBonus ? 0.08 : 0)) * weaponMasterySize, 24, 116);
+    stats.mineCount = clamp(1 + getWeaponGrowth(run, "mineCount") + safeInteger(player.mineBonus, 0) + (hasExplosionBonus ? 1 : 0) + (hasSplitShot ? 1 : 0), 1, 5);
+    stats.mineRadius = clamp(safeNumber(weapon.radius, 48) * sizeScale * safeNumber(player.mineRadiusMultiplier, 1) * safeNumber(player.explosionRadiusMultiplier, 1) * (1 + getWeaponGrowth(run, "mineRadius") * 0.12 + (hasExplosionBonus ? 0.08 : 0) + (hasPiercingShot ? 0.08 : 0)) * weaponMasterySize, 24, 124);
     stats.mineArmTimer = clamp(0.45 / speedScale - getWeaponGrowth(run, "mineSpeed") * 0.04, 0.16, 0.55);
     stats.mineDamage = clamp(stats.damage * (1 + getWeaponGrowth(run, "minePower") * 0.14 + (hasExplosionBonus ? 0.08 : 0)) * safeNumber(player.explosionDamageMultiplier, 1), 4, 999);
 
-    stats.waveCount = clamp(1 + getWeaponGrowth(run, "waveCount") + Math.floor(countGrowth / 2), 1, 3);
+    stats.waveCount = clamp(1 + getWeaponGrowth(run, "waveCount") + Math.floor(countGrowth / 2) + (hasSplitShot ? 1 : 0), 1, 4);
     stats.waveRadius = clamp(safeNumber(weapon.radius, 118) * sizeScale * safeNumber(player.waveRadiusMultiplier, 1) * (1 + getWeaponGrowth(run, "waveRadius") * 0.1) * weaponMasterySize, 55, 247);
     stats.waveArc = clamp(0.7 * (0.85 + sizeScale * 0.15), 0.45, 1.15);
     stats.waveLife = clamp(0.22 * (0.9 + speedScale * 0.1) * safeNumber(player.effectDurationMultiplier, 1), 0.16, 0.5);
     stats.waveDamage = clamp(stats.damage * (1 + getWeaponGrowth(run, "wavePower") * 0.12) * safeNumber(player.waveDamageMultiplier, 1), 3, 999);
 
-    stats.scytheCount = clamp(1 + Math.floor(countGrowth / 2), 1, 3);
+    stats.scytheCount = clamp(1 + Math.floor(countGrowth / 2) + (hasSplitShot ? 1 : 0), 1, 4);
     stats.scytheRange = clamp((safeNumber(weapon.range, 76) * (0.9 + sizeScale * 0.1) + getWeaponGrowth(run, "scytheRange") * 9) * weaponMasterySize, 42, 155);
     stats.scytheArc = clamp(safeNumber(weapon.arcWidth, 1.35) + sizeGrowth * 0.08, 0.7, 2.35);
-    stats.scytheDamage = clamp(stats.damage * safeNumber(player.meleeDamageMultiplier, 1), 2, 999);
+    stats.scytheDamage = clamp(stats.damage * safeNumber(player.meleeDamageMultiplier, 1) * (hasPiercingShot ? 1.08 : 1), 2, 999);
     stats.scytheHeal = clamp(safeNumber(weapon.healOnHit, 0.5) + powerGrowth * 0.15, 0, 4);
 
     stats.lineRange = clamp((safeNumber(weapon.range, 260) * (0.9 + speedScale * 0.1) + speedGrowth * 8) * weaponMasterySize, 120, 460);
     stats.lineWidth = clamp((safeNumber(weapon.width, 14) * sizeScale + getWeaponGrowth(run, "lineWidth") * 2) * weaponMasterySize, 6, 37);
-    stats.linePierce = clamp(safeInteger(weapon.pierce, 3) + getWeaponGrowth(run, "linePierce") + safeInteger(player.projectilePierceBonus, 0), 1, 8);
+    stats.linePierce = clamp(safeInteger(weapon.pierce, 3) + getWeaponGrowth(run, "linePierce") + safeInteger(player.projectilePierceBonus, 0) + (hasPiercingShot ? 1 : 0), 1, 9);
+    stats.lineCount = clamp(1 + (hasSplitShot ? 2 : 0), 1, 3);
     stats.lineDamage = clamp(stats.damage * safeNumber(player.lineDamageMultiplier, 1), 2, 999);
 
     stats.spreadCount = clamp(safeInteger(weapon.projectileCount, 5) + countGrowth, 1, 10);
@@ -552,6 +593,16 @@
     };
 
     if (enemy.isBoss) {
+      if (isBossRushRun(run)) {
+        const rushIndex = safeInteger(run.bossRushIndex, 0);
+        const hpScale = 0.82 + rushIndex * 0.16;
+        const damageScale = 0.9 + rushIndex * 0.08;
+
+        enemy.maxHp = Math.max(1, safeNumber(enemy.maxHp, 1) * hpScale);
+        enemy.hp = enemy.maxHp;
+        enemy.damage = Math.max(1, safeNumber(enemy.damage, 1) * damageScale);
+        enemy.score = Math.max(0, safeNumber(enemy.score, 0) + rushIndex * 8);
+      }
       enemy.baseSpeed = enemy.speed;
       enemy.chargeTimer = safeNumber((Data.bossPattern || {}).chargeCooldown, 7);
       enemy.chargePrepareTimer = 0;
@@ -602,7 +653,16 @@
   function spawnBoss(run) {
     let boss;
 
-    if (!run || run.bossSpawned) {
+    if (!run) {
+      return;
+    }
+
+    if (isBossRushRun(run)) {
+      if (run.bossRushActiveBoss || safeInteger(run.bossRushIndex, 0) >= safeInteger(run.bossRushBossCount, 4)) {
+        return;
+      }
+      run.bossRushBossId = getBossRushBossId(run);
+    } else if (run.bossSpawned) {
       return;
     }
 
@@ -614,7 +674,12 @@
 
     if (boss) {
       run.bossSpawned = true;
-      run.message = "보스가 나타났습니다";
+      if (isBossRushRun(run)) {
+        run.bossRushActiveBoss = true;
+        run.message = "보스 러시 " + (safeInteger(run.bossRushIndex, 0) + 1) + "/" + safeInteger(run.bossRushBossCount, 4) + " 시작";
+      } else {
+        run.message = "보스가 나타났습니다";
+      }
       run.messageTimer = 3;
     }
   }
@@ -640,6 +705,23 @@
     const wave = getWaveConfig(elapsed);
     const finalWaveMultiplier = isFinalWaveActive(run) ? safeNumber(game.finalWaveSpawnMultiplier, 0.75) : 1;
     const spawnInterval = clamp(safeNumber(wave.spawnInterval, 1.1) * safeNumber(modifiers.spawnIntervalMultiplier, 1) * finalWaveMultiplier, 0.28, 1.5);
+
+    if (isBossRushRun(run)) {
+      const rushMinionInterval = clamp(safeNumber(game.bossRushMinionInterval, 1.35) * safeNumber(modifiers.spawnIntervalMultiplier, 1), 0.55, 2.2);
+
+      run.bossRushSpawnTimer = Math.max(0, safeNumber(run.bossRushSpawnTimer, safeNumber(game.bossRushSpawnDelay, 1.2)) - delta);
+      if (!run.bossRushActiveBoss && run.bossRushSpawnTimer <= 0) {
+        spawnBoss(run);
+        run.bossRushSpawnTimer = Math.max(0.4, safeNumber(game.bossRushSpawnDelay, 1.2));
+      }
+
+      run.spawnTimer = Math.max(0, safeNumber(run.spawnTimer, 0) - delta);
+      if (run.spawnTimer <= 0 && run.enemies.length < getMaxEnemies(run)) {
+        spawnEnemy(run);
+        run.spawnTimer = rushMinionInterval;
+      }
+      return;
+    }
 
     if (isFinalWaveActive(run)) {
       run.finalWaveTimer = Math.max(0, safeNumber(run.finalWaveTimer, 0) + delta);
@@ -990,30 +1072,38 @@
     const stats = getWeaponStats(run);
     const margin = getViewportMargin();
     const dir = normalize(safeNumber(nearest.x, 0) - safeNumber(player.x, 0), safeNumber(nearest.y, 0) - safeNumber(player.y, 0));
-    const fromX = safeNumber(player.x, 0);
-    const fromY = safeNumber(player.y, 0);
-    const toX = fromX + dir.x * stats.lineRange;
-    const toY = fromY + dir.y * stats.lineRange;
-    let hitCount = 0;
+    const lineCount = Math.max(1, safeInteger(stats.lineCount, 1));
+    const hitIds = {};
 
-    pushEffect(run, {
-      type: "linePierce",
-      fromX: fromX,
-      fromY: fromY,
-      toX: toX,
-      toY: toY,
-      lineWidth: stats.lineWidth,
-      life: 0.2,
-      maxLife: 0.2
-    });
+    for (let l = 0; l < lineCount; l += 1) {
+      const sideOffset = lineCount === 1 ? 0 : (l - (lineCount - 1) / 2) * Math.max(10, stats.lineWidth * 1.2);
+      const fromX = safeNumber(player.x, 0) + -dir.y * sideOffset;
+      const fromY = safeNumber(player.y, 0) + dir.x * sideOffset;
+      const toX = fromX + dir.x * stats.lineRange;
+      const toY = fromY + dir.y * stats.lineRange;
+      let hitCount = 0;
 
-    for (let i = run.enemies.length - 1; i >= 0 && hitCount < stats.linePierce; i -= 1) {
-      const enemy = run.enemies[i];
-      const hitWidth = stats.lineWidth / 2 + safeNumber(enemy.radius, 8);
+      pushEffect(run, {
+        type: "linePierce",
+        fromX: fromX,
+        fromY: fromY,
+        toX: toX,
+        toY: toY,
+        lineWidth: stats.lineWidth,
+        life: 0.2,
+        maxLife: 0.2
+      });
 
-      if (isEnemyTargetable(run, enemy, player, stats.lineRange + safeNumber(enemy.radius, 8), margin) && distanceToSegmentSquared(enemy, fromX, fromY, toX, toY) <= hitWidth * hitWidth) {
-        damageEnemy(run, enemy, stats.lineDamage, "linePierce");
-        hitCount += 1;
+      for (let i = run.enemies.length - 1; i >= 0 && hitCount < stats.linePierce; i -= 1) {
+        const enemy = run.enemies[i];
+        const enemyId = String(enemy.id);
+        const hitWidth = stats.lineWidth / 2 + safeNumber(enemy.radius, 8);
+
+        if (!hitIds[enemyId] && isEnemyTargetable(run, enemy, player, stats.lineRange + safeNumber(enemy.radius, 8), margin) && distanceToSegmentSquared(enemy, fromX, fromY, toX, toY) <= hitWidth * hitWidth) {
+          hitIds[enemyId] = true;
+          damageEnemy(run, enemy, stats.lineDamage, "linePierce");
+          hitCount += 1;
+        }
       }
     }
   }
@@ -1349,6 +1439,48 @@
     }
   }
 
+  function startBossRushReward(run) {
+    const game = Data.game || {};
+    const rewardCount = Math.max(0, safeInteger(run && run.bossRushRewardCount, 0)) + 1;
+    let choices = [];
+
+    if (!run || run.finished) {
+      return;
+    }
+
+    run.bossRushRewardCount = rewardCount;
+    run.bossRushSpawnTimer = Math.max(0.4, safeNumber(game.bossRushSpawnDelay, 1.2));
+    run.enemies = (run.enemies || []).filter(function (target) {
+      return target && target.isBoss;
+    });
+
+    if (rewardCount % 2 === 0) {
+      choices = chooseRelics(run, 3);
+      if (choices.length > 0) {
+        run.relicOfferCount = Math.max(0, safeInteger(run.relicOfferCount, 0)) + 1;
+      }
+    }
+
+    if (!choices.length) {
+      choices = chooseAbilities(Data.abilities || [], 3);
+    }
+    if (!choices.length) {
+      choices = chooseRelics(run, 3);
+      if (choices.length > 0) {
+        run.relicOfferCount = Math.max(0, safeInteger(run.relicOfferCount, 0)) + 1;
+      }
+    }
+
+    run.pendingAbilities = choices;
+    run.relicChoices = choices.length && choices[0].category === "relic" ? choices : [];
+    run.message = "다음 보스 전 보상을 선택하세요";
+    run.messageTimer = 3;
+
+    if (choices.length > 0) {
+      run.mode = states.levelup || "levelup";
+    }
+  }
+
   function defeatEnemy(run, enemy, index) {
     const player = run.player || {};
     run.kills = Math.max(0, Math.floor(safeNumber(run.kills, 0))) + 1;
@@ -1378,6 +1510,24 @@
     }
 
     if (enemy.isBoss) {
+      if (isBossRushRun(run)) {
+        run.bossDefeated = true;
+        run.bossRushActiveBoss = false;
+        run.bossRushDefeated = Math.max(0, safeInteger(run.bossRushDefeated, 0)) + 1;
+        run.bossRushIndex = Math.max(0, safeInteger(run.bossRushIndex, 0)) + 1;
+        run.enemies.splice(index, 1);
+
+        if (safeInteger(run.bossRushDefeated, 0) >= safeInteger(run.bossRushBossCount, 4)) {
+          run.message = "보스 러시 클리어";
+          run.messageTimer = 3;
+          AS.State.finishRun(true);
+          return;
+        }
+
+        startBossRushReward(run);
+        return;
+      }
+
       run.bossDefeated = true;
       if (!run.finalWaveStarted && !run.finished) {
         run.finalWaveStarted = true;
@@ -2089,7 +2239,7 @@
       }
 
       if (run.remainingTime <= 0 && run.mode === (states.running || "running")) {
-        AS.State.finishRun(true);
+        AS.State.finishRun(!isBossRushRun(run));
       }
     },
 
