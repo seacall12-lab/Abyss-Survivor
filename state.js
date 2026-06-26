@@ -113,7 +113,8 @@
       },
       missions: {
         completed: {},
-        progress: {}
+        progress: {},
+        runHistory: {}
       }
     };
   }
@@ -296,8 +297,10 @@
     const source = missions && typeof missions === "object" ? missions : {};
     const completedSource = source.completed && typeof source.completed === "object" ? source.completed : {};
     const progressSource = source.progress && typeof source.progress === "object" ? source.progress : {};
+    const historySource = source.runHistory && typeof source.runHistory === "object" ? source.runHistory : {};
     const completed = {};
     const progress = {};
+    const runHistory = {};
     let key;
 
     for (key in completedSource) {
@@ -312,9 +315,13 @@
       }
     }
 
+    runHistory.totalCompleted = safeInteger(historySource.totalCompleted, 0);
+    runHistory.totalReward = safeInteger(historySource.totalReward, 0);
+
     return {
       completed: completed,
-      progress: progress
+      progress: progress,
+      runHistory: runHistory
     };
   }
 
@@ -558,6 +565,37 @@
     return multiplier;
   }
 
+  function createMission(id, name, target, reward) {
+    return {
+      id: id,
+      name: name,
+      target: Math.max(1, safeInteger(target, 1)),
+      reward: Math.max(0, safeInteger(reward, 0)),
+      progress: 0,
+      completed: false
+    };
+  }
+
+  function createRunMissions(depth) {
+    const selectedDepth = clamp(safeInteger(depth, 0), 0, getMaxAbyssDepth());
+    const depthReward = Math.floor(selectedDepth / 2);
+    const pool = [
+      createMission("killCount", "적 80마리 처치", 80 + selectedDepth * 5, 10 + depthReward),
+      createMission("eliteKills", "정예 적 처치", 2 + Math.floor(selectedDepth / 5), 14 + depthReward),
+      createMission("surviveTime", "150초 생존", 150, 12 + depthReward),
+      createMission("bossKill", "보스 처치", 1, 15 + depthReward),
+      createMission("relicCount", "유물 2개 획득", 2, 12 + depthReward),
+      createMission("levelReach", "레벨 7 달성", 7, 14 + depthReward)
+    ];
+    const result = [];
+
+    while (pool.length > 0 && result.length < 3) {
+      result.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    }
+
+    return result;
+  }
+
   function createPlayer() {
     const game = Data.game || {};
     const fallbackPlayer = {
@@ -692,6 +730,9 @@
       },
       bossSpawned: false,
       bossDefeated: false,
+      finalWaveStarted: false,
+      finalWaveTimer: 0,
+      bossContactTimer: 0,
       finished: false,
       rewardGranted: false,
       masteryGranted: false,
@@ -699,10 +740,13 @@
       newlyUnlocked: [],
       depthUnlocked: false,
       missionChecked: false,
+      missionRewardsGranted: false,
       shardReward: 0,
       baseShardReward: 0,
       missionShardReward: 0,
       completedMissionIds: [],
+      completedRunMissions: [],
+      runMissions: createRunMissions(selectedDepth),
       eliteKills: 0,
       relics: [],
       relicChoices: [],
@@ -760,59 +804,91 @@
     return count;
   }
 
-  function getMissionValue(run, missionId, shardReward, isClear) {
-    if (missionId === "runKills100") {
+  function getRunMissionValue(run, mission) {
+    const missionId = mission && mission.id;
+
+    if (missionId === "killCount") {
       return safeInteger(run.kills, 0);
     }
     if (missionId === "bossKill") {
-      return isClear || run.bossDefeated ? 1 : 0;
+      return run.bossDefeated ? 1 : 0;
     }
-    if (missionId === "twoEvolutions") {
-      return countRunEvolutions(run);
-    }
-    if (missionId === "twoRelics") {
+    if (missionId === "relicCount") {
       return (run.relics || []).length;
     }
-    if (missionId === "earn30Shards") {
-      return safeInteger(shardReward, 0);
-    }
-    if (missionId === "challenge120") {
-      return run.selectedChallengeId !== "normal" ? Math.floor(safeNumber(run.time, 0)) : 0;
-    }
-    if (missionId === "eliteKills3") {
+    if (missionId === "eliteKills") {
       return safeInteger(run.eliteKills, 0);
     }
+    if (missionId === "surviveTime") {
+      return Math.floor(safeNumber(run.time, 0));
+    }
+    if (missionId === "levelReach") {
+      return safeInteger(run.level, 1);
+    }
+
     return 0;
   }
 
-  function applyMissionRewards(save, run, shardReward, isClear) {
-    const missions = Array.isArray(Data.missions) ? Data.missions : [];
-    const missionState = sanitizeMissionMap(save.missions);
-    let reward = 0;
-
-    if (run.missionChecked) {
-      return 0;
-    }
-
-    run.missionChecked = true;
-    run.completedMissionIds = [];
+  function updateRunMissionProgress(run) {
+    const missions = Array.isArray(run.runMissions) ? run.runMissions : [];
 
     for (let i = 0; i < missions.length; i += 1) {
       const mission = missions[i];
       const target = Math.max(1, safeInteger(mission.target, 1));
-      const value = Math.min(target, getMissionValue(run, mission.id, shardReward, isClear));
+      const value = Math.min(target, getRunMissionValue(run, mission));
+
+      mission.progress = value;
+      mission.completed = value >= target;
+    }
+
+    return missions;
+  }
+
+  function applyMissionRewards(save, run) {
+    const missionState = sanitizeMissionMap(save.missions);
+    let reward = 0;
+    let completedCount = 0;
+
+    if (run.missionRewardsGranted || run.missionChecked) {
+      return 0;
+    }
+
+    run.missionChecked = true;
+    run.missionRewardsGranted = true;
+    run.completedMissionIds = [];
+    run.completedRunMissions = [];
+
+    if (!Array.isArray(run.runMissions) || run.runMissions.length === 0) {
+      run.runMissions = createRunMissions(run.selectedDepth);
+    }
+
+    const missions = updateRunMissionProgress(run);
+
+    for (let i = 0; i < missions.length; i += 1) {
+      const mission = missions[i];
+      const target = Math.max(1, safeInteger(mission.target, 1));
+      const value = Math.min(target, safeInteger(mission.progress, 0));
+
       missionState.progress[mission.id] = Math.max(safeInteger(missionState.progress[mission.id], 0), value);
 
-      if (!missionState.completed[mission.id] && value >= target) {
-        missionState.completed[mission.id] = true;
+      if (value >= target) {
+        mission.completed = true;
         reward += safeInteger(mission.reward, 0);
         run.completedMissionIds.push(mission.id);
+        run.completedRunMissions.push({
+          id: mission.id,
+          name: mission.name,
+          reward: safeInteger(mission.reward, 0)
+        });
+        completedCount += 1;
       }
     }
 
+    missionState.runHistory.totalCompleted = safeInteger(missionState.runHistory.totalCompleted, 0) + completedCount;
+    missionState.runHistory.totalReward = safeInteger(missionState.runHistory.totalReward, 0) + reward;
     save.missions = missionState;
     run.missionShardReward = Math.max(0, reward);
-    run.missionCompletedCount = countCompletedMissions(missionState);
+    run.missionCompletedCount = completedCount;
     return reward;
   }
 
@@ -1001,6 +1077,14 @@
       return this.save;
     },
 
+    getRunMissions: function (run) {
+      const currentRun = run || this.getRun();
+      if (!Array.isArray(currentRun.runMissions) || currentRun.runMissions.length === 0) {
+        currentRun.runMissions = createRunMissions(currentRun.selectedDepth);
+      }
+      return updateRunMissionProgress(currentRun);
+    },
+
     finishRun: function (isClear) {
       const run = this.getRun();
       const save = this.getSave();
@@ -1009,7 +1093,8 @@
       const killReward = Math.floor(runKills / 5);
       const timeReward = Math.floor(runTime / 30);
       const clearReward = isClear ? 20 : 0;
-      const baseShardReward = Math.max(0, safeInteger(killReward + timeReward + clearReward, 0));
+      const bossKillReward = run.bossDefeated ? 10 : 0;
+      const baseShardReward = Math.max(0, safeInteger(killReward + timeReward + clearReward + bossKillReward, 0));
       const shardReward = Math.max(0, Math.floor(baseShardReward * Math.max(0, safeNumber(run.rewardMultiplier, 1))));
       let missionReward = 0;
 
@@ -1021,7 +1106,8 @@
       run.rewardGranted = true;
       run.baseShardReward = baseShardReward;
       run.shardReward = shardReward;
-      missionReward = applyMissionRewards(save, run, shardReward, isClear);
+      run.bossKillReward = bossKillReward;
+      missionReward = applyMissionRewards(save, run);
       save.bestTime = Math.max(safeNumber(save.bestTime, 0), runTime);
       save.bestKills = Math.max(safeInteger(save.bestKills, 0), runKills);
       save.shards = safeInteger(save.shards, 0) + shardReward + missionReward;
