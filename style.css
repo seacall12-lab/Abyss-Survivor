@@ -304,6 +304,7 @@ button {
 }
 
 .overlay-panel {
+  position: relative;
   width: min(100%, 320px);
   max-height: 100%;
   overflow: auto;
@@ -345,6 +346,85 @@ button {
 .setup-panel {
   margin-top: 6px;
   text-align: left;
+}
+
+.lobby-summary {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  text-align: left;
+}
+
+.lobby-choice-button {
+  width: 100%;
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: rgba(31, 53, 67, 0.92);
+  text-align: left;
+  box-shadow: inset 0 0 0 1px rgba(170, 229, 239, 0.13);
+}
+
+.lobby-choice-body {
+  display: block;
+  min-width: 0;
+}
+
+.lobby-choice-body strong,
+.lobby-choice-body span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lobby-choice-body strong {
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.lobby-choice-body span {
+  margin-top: 3px;
+  color: #b8ced8;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.lobby-choice-arrow {
+  color: #d5ef73;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: right;
+}
+
+.lobby-modal {
+  position: absolute;
+  inset: 8px;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid rgba(126, 204, 222, 0.3);
+  border-radius: 8px;
+  background: rgba(7, 16, 25, 0.98);
+  text-align: left;
+}
+
+.lobby-modal.is-hidden {
+  display: none;
+}
+
+.lobby-modal-body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .panel-title,
@@ -392,6 +472,11 @@ button {
   box-shadow:
     inset 0 0 0 1px var(--rarity-color, rgba(213, 239, 115, 0.45)),
     0 0 16px var(--rarity-glow, rgba(213, 239, 115, 0.1));
+}
+
+.choice-button.is-locked {
+  opacity: 0.5;
+  filter: grayscale(0.35);
 }
 
 .choice-button:disabled {
