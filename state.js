@@ -52,7 +52,7 @@
 
   function createDefaultSave() {
     return {
-      version: 5,
+      version: 6,
       bestTime: 0,
       bestKills: 0,
       totalRuns: 0,
@@ -62,6 +62,7 @@
       selectedWeaponId: "abyssBullet",
       selectedZoneId: "riftGate",
       selectedChallengeId: "normal",
+      selectedEventId: "normal",
       upgrades: {
         vitality: 0,
         power: 0,
@@ -339,6 +340,7 @@
       selectedWeaponId: "abyssBullet",
       selectedZoneId: "riftGate",
       selectedChallengeId: findById(Data.challenges, typeof source.selectedChallengeId === "string" ? source.selectedChallengeId : base.selectedChallengeId, "normal").id || "normal",
+      selectedEventId: findById(Data.events, typeof source.selectedEventId === "string" ? source.selectedEventId : base.selectedEventId, "normal").id || "normal",
       upgrades: sanitizeUpgradeMap(source.upgrades),
       abyss: sanitizeAbyssMap(source.abyss),
       mastery: sanitizeMasteryMap(source.mastery),
@@ -378,6 +380,43 @@
   function getChallengeModifiers(save) {
     const challenge = getChallenge(save);
     return challenge.modifiers && typeof challenge.modifiers === "object" ? challenge.modifiers : {};
+  }
+
+  function getSelectedEvent(save) {
+    return findById(Data.events, save && save.selectedEventId, "normal");
+  }
+
+  function getEventModifiers(save) {
+    const event = getSelectedEvent(save);
+    return event.modifiers && typeof event.modifiers === "object" ? event.modifiers : {};
+  }
+
+  function multiplyModifier(base, multiplier) {
+    return Math.max(0, safeNumber(base, 1) * safeNumber(multiplier, 1));
+  }
+
+  function combineRunModifiers(save) {
+    const challengeModifiers = getChallengeModifiers(save);
+    const eventModifiers = getEventModifiers(save);
+    const result = Object.assign(copyObject(challengeModifiers), copyObject(eventModifiers));
+
+    result.spawnIntervalMultiplier = multiplyModifier(challengeModifiers.spawnIntervalMultiplier, eventModifiers.spawnIntervalMultiplier);
+    result.enemyHpMultiplier = multiplyModifier(challengeModifiers.enemyHpMultiplier, eventModifiers.enemyHpMultiplier);
+    result.enemyDamageMultiplier = multiplyModifier(challengeModifiers.enemyDamageMultiplier, eventModifiers.enemyDamageMultiplier);
+    result.enemySpeedMultiplier = multiplyModifier(challengeModifiers.enemySpeedMultiplier, eventModifiers.enemySpeedMultiplier);
+    result.playerMaxHpMultiplier = multiplyModifier(challengeModifiers.playerMaxHpMultiplier, eventModifiers.playerMaxHpMultiplier);
+    result.playerDamageMultiplier = multiplyModifier(challengeModifiers.playerDamageMultiplier, eventModifiers.playerDamageMultiplier);
+    result.attackCooldownMultiplier = multiplyModifier(challengeModifiers.attackCooldownMultiplier, eventModifiers.attackCooldownMultiplier);
+    result.damageTakenMultiplier = multiplyModifier(challengeModifiers.damageTakenMultiplier, eventModifiers.damageTakenMultiplier);
+    result.eliteChanceBonus = safeNumber(challengeModifiers.eliteChanceBonus, 0) + safeNumber(eventModifiers.eliteChanceBonus, 0);
+    result.maxEnemiesBonus = safeInteger(challengeModifiers.maxEnemiesBonus, 0) + safeInteger(eventModifiers.maxEnemiesBonus, 0);
+    result.gemDropBonus = safeNumber(challengeModifiers.gemDropBonus, 0) + safeNumber(eventModifiers.gemDropBonus, 0);
+    result.gemExpMultiplier = multiplyModifier(challengeModifiers.gemExpMultiplier, eventModifiers.gemExpMultiplier);
+    result.relicEffectMultiplier = multiplyModifier(challengeModifiers.relicEffectMultiplier, eventModifiers.relicEffectMultiplier);
+    result.healOnKill = safeNumber(challengeModifiers.healOnKill, 0) + safeNumber(eventModifiers.healOnKill, 0);
+    result.relicOfferBonus = safeInteger(challengeModifiers.relicOfferBonus, 0) + safeInteger(eventModifiers.relicOfferBonus, 0);
+
+    return result;
   }
 
   function getMasteryEntry(save, category, id) {
@@ -617,7 +656,7 @@
     const selectedClass = findById(Data.classes, save.selectedClassId, "wanderer");
     const classMasteryLevel = getMasteryLevel(save, "classes", save.selectedClassId);
     const zoneMasteryLevel = getMasteryLevel(save, "zones", save.selectedZoneId);
-    const modifiers = getChallengeModifiers(save);
+    const modifiers = combineRunModifiers(save);
     const upgrades = sanitizeUpgradeMap(save.upgrades);
     const maxHp = Math.max(1, (safeNumber(source.maxHp, fallbackPlayer.maxHp) * safeNumber(selectedClass.maxHpMultiplier, 1) + upgrades.vitality * 5 + (classMasteryLevel >= 3 ? 3 : 0)) * safeNumber(modifiers.playerMaxHpMultiplier, 1));
     const speed = safeNumber(source.speed, fallbackPlayer.speed) * safeNumber(selectedClass.speedMultiplier, 1);
@@ -640,7 +679,7 @@
       projectileRadius: Math.max(1, safeNumber(source.projectileRadius, fallbackPlayer.projectileRadius)),
       pickupRadius: Math.max(1, pickupRadius),
       invincibleTime: Math.max(0, safeNumber(source.invincibleTime, fallbackPlayer.invincibleTime)),
-      damageTakenMultiplier: Math.max(0.1, safeNumber(selectedClass.damageTakenMultiplier, 1)),
+      damageTakenMultiplier: Math.max(0.1, safeNumber(selectedClass.damageTakenMultiplier, 1) * safeNumber(modifiers.damageTakenMultiplier, 1)),
       expMultiplier: zoneMasteryLevel >= 3 ? 1.03 : 1,
       gemHealChance: 0,
       gemHealAmount: 0,
@@ -672,13 +711,14 @@
     const game = Data.game || {};
     const save = AS.State && AS.State.getSave ? AS.State.getSave() : sanitizeSave(null);
     const challenge = getChallenge(save);
+    const event = getSelectedEvent(save);
     const zone = findById(Data.zones, save.selectedZoneId, "riftGate");
-    const modifiers = getChallengeModifiers(save);
+    const modifiers = combineRunModifiers(save);
     const selectedDepth = clamp(safeInteger(save.abyss && save.abyss.selectedDepth, 0), 0, safeInteger(save.abyss && save.abyss.maxUnlockedDepth, 0));
     const abyssModifiers = getAbyssModifiers(selectedDepth, save);
     const runDuration = Math.max(1, safeNumber(modifiers.runDuration, safeNumber(game.runDuration, 180)));
     const bossSpawnTime = Math.max(1, safeNumber(modifiers.bossSpawnTime, safeNumber(game.bossSpawnTime, 120)));
-    const rewardMultiplier = clamp(safeNumber(challenge.rewardMultiplier, 1) * safeNumber(zone.rewardMultiplier, 1) * safeNumber(abyssModifiers.rewardMultiplier, 1) * getRewardMasteryMultiplier(save), 0, 4);
+    const rewardMultiplier = clamp(safeNumber(challenge.rewardMultiplier, 1) * safeNumber(event.rewardMultiplier, 1) * safeNumber(zone.rewardMultiplier, 1) * safeNumber(abyssModifiers.rewardMultiplier, 1) * getRewardMasteryMultiplier(save), 0, 5);
     const viewportWidth = Math.max(1, safeNumber(game.width, 360));
     const viewportHeight = Math.max(1, safeNumber(game.height, 560));
     const worldWidth = Math.max(viewportWidth, safeNumber(game.worldWidth, viewportWidth));
@@ -697,12 +737,16 @@
       selectedWeaponId: save.selectedWeaponId || "abyssBullet",
       selectedZoneId: save.selectedZoneId || "riftGate",
       selectedChallengeId: save.selectedChallengeId || "normal",
+      selectedEventId: save.selectedEventId || "normal",
+      selectedEventName: event.name || "일반",
       selectedDepth: selectedDepth,
       abyssModifiers: abyssModifiers,
       weaponMasteryLevel: getMasteryLevel(save, "weapons", save.selectedWeaponId),
       runDuration: runDuration,
       bossSpawnTime: bossSpawnTime,
       rewardMultiplier: rewardMultiplier,
+      eventRewardMultiplier: safeNumber(event.rewardMultiplier, 1),
+      eventModifiers: copyObject(getEventModifiers(save)),
       challengeModifiers: Object.assign(copyObject(modifiers), {
         enemyHpMultiplier: safeNumber(modifiers.enemyHpMultiplier, 1) * safeNumber(abyssModifiers.enemyHpMultiplier, 1),
         enemySpeedMultiplier: safeNumber(modifiers.enemySpeedMultiplier, 1) * safeNumber(abyssModifiers.enemySpeedMultiplier, 1),
@@ -1168,6 +1212,13 @@
       return save;
     },
 
+    setSelectedEvent: function (eventId) {
+      const save = this.getSave();
+      save.selectedEventId = findById(Data.events, eventId, "normal").id || "normal";
+      this.writeSave();
+      return save;
+    },
+
     setSelectedDepth: function (depth) {
       const save = this.getSave();
       const abyss = sanitizeAbyssMap(save.abyss);
@@ -1261,6 +1312,14 @@
 
     getAbyssModifiers: function (depth) {
       return getAbyssModifiers(depth, this.getSave());
+    },
+
+    getSelectedEvent: function () {
+      return getSelectedEvent(this.getSave());
+    },
+
+    getEventModifiers: function () {
+      return copyObject(getEventModifiers(this.getSave()));
     },
 
     checkUnlocks: function () {
