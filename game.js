@@ -135,6 +135,18 @@
     return clamp(safeNumber((Data.game || {}).targetViewportMargin, 64), 0, 140);
   }
 
+  function isFinalWaveActive(run) {
+    return !!(run && run.finalWaveStarted && !run.finished && safeNumber(run.remainingTime, 0) > 0);
+  }
+
+  function getMaxEnemies(run) {
+    const game = Data.game || {};
+    const baseMax = Math.max(1, safeNumber(game.maxEnemies, 80));
+    const bonus = isFinalWaveActive(run) ? Math.max(0, safeNumber(game.finalWaveMaxEnemiesBonus, 0)) : 0;
+
+    return clamp(baseMax + bonus, 1, 120);
+  }
+
   function isInsideTargetViewport(run, enemy, margin) {
     const viewportMargin = Math.max(0, safeNumber(margin, getViewportMargin()));
     const viewportWidth = getViewportWidth();
@@ -216,12 +228,12 @@
     stats.orbitDamage = clamp(stats.damage * (1 + getWeaponGrowth(run, "orbitPower") * 0.12), 2, 999);
     stats.orbitHitCooldown = clamp(0.45 * (stats.cooldown / 0.55), 0.16, 0.55);
 
-    stats.lightningRange = clamp(300 + speedGrowth * 10 + getWeaponGrowth(run, "chainCount") * 8, 260, 420);
+    stats.lightningRange = clamp(160 + speedGrowth * 5, 140, 240);
     stats.chainCount = clamp(safeInteger(weapon.chainCount, 3) + getWeaponGrowth(run, "chainCount") + safeInteger(player.chainBonus, 0), 1, 6);
     stats.chainBeamCount = clamp(1 + getWeaponGrowth(run, "chainBeamCount") + Math.floor(countGrowth / 2), 1, 3);
     stats.chainWidth = clamp(3 * sizeScale + getWeaponGrowth(run, "chainWidth") * 1.3, 2, 9);
-    stats.chainRange = clamp(170 * (0.9 + speedScale * 0.1) + getWeaponGrowth(run, "chainCount") * 8, 150, 240);
-    stats.chainDamage = clamp(stats.damage * (1 + getWeaponGrowth(run, "chainPower") * 0.12 + getWeaponGrowth(run, "chainWidth") * 0.08) * safeNumber(player.chainDamageMultiplier, 1), 2, 999);
+    stats.chainRange = clamp(96 * (0.92 + speedScale * 0.08), 84, 160);
+    stats.chainDamage = clamp(stats.damage * 0.5 * (1 + getWeaponGrowth(run, "chainPower") * 0.08 + getWeaponGrowth(run, "chainWidth") * 0.05) * safeNumber(player.chainDamageMultiplier, 1), 1, 999);
 
     stats.mineCount = clamp(1 + getWeaponGrowth(run, "mineCount") + safeInteger(player.mineBonus, 0) + (hasExplosionBonus ? 1 : 0), 1, 4);
     stats.mineRadius = clamp(safeNumber(weapon.radius, 48) * sizeScale * safeNumber(player.mineRadiusMultiplier, 1) * safeNumber(player.explosionRadiusMultiplier, 1) * (1 + getWeaponGrowth(run, "mineRadius") * 0.12 + (hasExplosionBonus ? 0.08 : 0)) * weaponMasterySize, 24, 116);
@@ -350,18 +362,35 @@
     return count;
   }
 
+  function getBossContactDamageMultiplier(run) {
+    const game = Data.game || {};
+    const weapon = getWeapon(run);
+    const tags = Array.isArray(weapon.tags) ? weapon.tags : [];
+    const attackType = weapon.attackType || weapon.id || "";
+    let isMelee = attackType === "orbit" || attackType === "scythe";
+
+    for (let i = 0; i < tags.length; i += 1) {
+      if (tags[i] === "melee" || tags[i] === "orbit" || tags[i] === "scythe") {
+        isMelee = true;
+      }
+    }
+
+    return isMelee ? clamp(safeNumber(game.meleeBossContactDamageMultiplier, 0.7), 0.1, 1) : 1;
+  }
+
   function applyEliteModifier(enemy, run) {
     const game = Data.game || {};
     const zone = getZone(run);
     const modifiers = ["giant", "swift", "toxic", "splitter", "volatile", "armored", "regen", "summoner"];
     const elapsed = safeNumber(run && run.time, 0);
-    const maxElites = Math.max(0, safeNumber(game.maxEliteEnemies, 3));
+    const maxElites = Math.max(0, safeNumber(game.maxEliteEnemies, 3) + (isFinalWaveActive(run) ? 1 : 0));
     const baseChance = clamp(safeNumber(game.eliteChance, 0.07), 0, 0.25);
     const challengeBonus = run && run.selectedChallengeId !== "normal" ? 0.02 : 0;
     const zoneBonus = (run && run.selectedZoneId === "abyssCore" ? 0.01 : 0) + safeNumber(zone.eliteChanceBonus, 0);
     const abyssBonus = safeNumber(run && run.abyssModifiers && run.abyssModifiers.eliteChanceBonus, 0);
     const splitterBonus = safeNumber(zone.splitterChanceBonus, 0);
-    const chance = clamp(baseChance + challengeBonus + zoneBonus + abyssBonus, 0, 0.4);
+    const finalWaveBonus = isFinalWaveActive(run) ? safeNumber(game.finalWaveEliteChanceBonus, 0.05) : 0;
+    const chance = clamp(baseChance + challengeBonus + zoneBonus + abyssBonus + finalWaveBonus, 0, 0.4);
     let modifier;
 
     if (!enemy || enemy.isBoss || elapsed < 60 || countEliteEnemies(run) >= maxElites || Math.random() > chance) {
@@ -438,7 +467,8 @@
       if (Object.prototype.hasOwnProperty.call(weights, key) && key !== "boss") {
         const timeBonus = key === "tank" ? elapsed * 0.015 : 0;
         const zoneBonus = key === "fast" ? safeNumber(zone.fastEnemyWeightBonus, 0) : 0;
-        const weight = Math.max(0, safeNumber(weights[key], 0)) + timeBonus + zoneBonus;
+        const finalWaveBonus = isFinalWaveActive(run) ? (key === "fast" ? 18 : (key === "tank" ? 16 : 0)) : 0;
+        const weight = Math.max(0, safeNumber(weights[key], 0)) + timeBonus + zoneBonus + finalWaveBonus;
 
         if (weight > 0) {
           choices.push({ type: key, weight: weight });
@@ -537,8 +567,7 @@
   }
 
   function spawnEnemy(run, type) {
-    const game = Data.game || {};
-    const maxEnemies = Math.max(1, safeNumber(game.maxEnemies, 80));
+    const maxEnemies = getMaxEnemies(run);
 
     if (!run || run.enemies.length >= maxEnemies) {
       return null;
@@ -551,8 +580,7 @@
   }
 
   function spawnEnemyNear(run, type, x, y) {
-    const game = Data.game || {};
-    const maxEnemies = Math.max(1, safeNumber(game.maxEnemies, 80));
+    const maxEnemies = getMaxEnemies(run);
     const width = getWorldWidth(run);
     const height = getWorldHeight(run);
     const enemy = createEnemy(type || "normal", run);
@@ -574,7 +602,7 @@
       return;
     }
 
-    if (run.enemies.length >= Math.max(1, safeNumber((Data.game || {}).maxEnemies, 80))) {
+    if (run.enemies.length >= getMaxEnemies(run)) {
       run.enemies.shift();
     }
 
@@ -606,8 +634,12 @@
     const modifiers = getChallengeModifiers(run);
     const elapsed = safeNumber(run.time, 0);
     const wave = getWaveConfig(elapsed);
-    const spawnInterval = clamp(safeNumber(wave.spawnInterval, 1.1) * safeNumber(modifiers.spawnIntervalMultiplier, 1), 0.32, 1.5);
+    const finalWaveMultiplier = isFinalWaveActive(run) ? safeNumber(game.finalWaveSpawnMultiplier, 0.75) : 1;
+    const spawnInterval = clamp(safeNumber(wave.spawnInterval, 1.1) * safeNumber(modifiers.spawnIntervalMultiplier, 1) * finalWaveMultiplier, 0.28, 1.5);
 
+    if (isFinalWaveActive(run)) {
+      run.finalWaveTimer = Math.max(0, safeNumber(run.finalWaveTimer, 0) + delta);
+    }
     run.spawnTimer = Math.max(0, safeNumber(run.spawnTimer, 0) - delta);
     if (run.spawnTimer <= 0) {
       spawnEnemy(run);
@@ -829,7 +861,7 @@
           lineWidth: stats.chainWidth,
           life: 0.18
         });
-        damageEnemy(run, current, Math.max(2, stats.chainDamage * (i === 0 ? 1 : 0.72)), "lightning");
+        damageEnemy(run, current, Math.max(1, stats.chainDamage * (i === 0 ? 1 : 0.65)), "lightning");
 
         previous = current;
         current = null;
@@ -1327,7 +1359,12 @@
 
     if (enemy.isBoss) {
       run.bossDefeated = true;
-      AS.State.finishRun(true);
+      if (!run.finalWaveStarted && !run.finished) {
+        run.finalWaveStarted = true;
+        run.finalWaveTimer = 0;
+        run.message = "심연 폭주가 시작되었습니다";
+        run.messageTimer = 3;
+      }
     }
 
     run.enemies.splice(index, 1);
@@ -1372,20 +1409,29 @@
   function handlePlayerHits(run, delta) {
     const player = run.player;
     run.invincibleTimer = Math.max(0, safeNumber(run.invincibleTimer, 0) - delta);
-
-    if (run.invincibleTimer > 0) {
-      return;
-    }
+    run.bossContactTimer = Math.max(0, safeNumber(run.bossContactTimer, 0) - delta);
 
     for (let i = 0; i < run.enemies.length; i += 1) {
       const enemy = run.enemies[i];
       const hitRadius = safeNumber(player.radius, 1) + safeNumber(enemy.radius, 1);
 
       if (distanceSquared(player, enemy) <= hitRadius * hitRadius) {
-        player.hp = Math.max(0, safeNumber(player.hp, 0) - Math.max(0, safeNumber(enemy.damage, 0) * safeNumber(player.damageTakenMultiplier, 1)));
+        if (enemy.isBoss) {
+          if (run.bossContactTimer > 0) {
+            continue;
+          }
+          player.hp = Math.max(0, safeNumber(player.hp, 0) - Math.max(0, safeNumber(enemy.damage, 0) * safeNumber(player.damageTakenMultiplier, 1) * getBossContactDamageMultiplier(run)));
+          run.bossContactTimer = Math.max(0.1, safeNumber((Data.game || {}).bossContactTickInterval, 0.7));
+          run.invincibleTimer = Math.max(run.invincibleTimer, 0.12);
+        } else {
+          if (run.invincibleTimer > 0) {
+            continue;
+          }
+          player.hp = Math.max(0, safeNumber(player.hp, 0) - Math.max(0, safeNumber(enemy.damage, 0) * safeNumber(player.damageTakenMultiplier, 1)));
+          run.invincibleTimer = Math.max(0, safeNumber(player.invincibleTime, 0.6));
+        }
         player.hitFlashTimer = 0.16;
         pushImpactEffect(run, player, "player", safeNumber(player.radius, 12) + 8);
-        run.invincibleTimer = Math.max(0, safeNumber(player.invincibleTime, 0.6));
 
         if (player.hp <= 0) {
           AS.State.finishRun(false);
@@ -1649,7 +1695,7 @@
 
   function trimCollections(run) {
     const game = Data.game || {};
-    const maxEnemies = Math.max(1, safeNumber(game.maxEnemies, 80));
+    const maxEnemies = getMaxEnemies(run);
     const maxProjectiles = Math.max(1, safeNumber(game.maxProjectiles, 80));
     const maxGems = Math.max(1, safeNumber(game.maxGems, 120));
     const maxEffects = Math.max(1, safeNumber(game.maxEffects, 48));
@@ -1961,6 +2007,10 @@
 
     isEnemyTargetable: function (run, enemy, origin, maxRange) {
       return isEnemyTargetable(run, enemy, origin, maxRange, getViewportMargin());
+    },
+
+    getBossContactDamageMultiplier: function (run) {
+      return getBossContactDamageMultiplier(run || (AS.State && AS.State.getRun ? AS.State.getRun() : null));
     },
 
     update: function (run, delta) {
