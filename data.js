@@ -10,8 +10,9 @@
       height: 560,
       worldWidth: 1080,
       worldHeight: 1680,
-      runDuration: 180,
-      bossSpawnTime: 120,
+      runDuration: 300,
+      bossSpawnTime: 210,
+      finalWaveForceTime: 270,
       maxEnemies: 104,
       maxProjectiles: 112,
       maxGems: 120,
@@ -24,9 +25,9 @@
       targetViewportMargin: 40,
       bossContactTickInterval: 0.7,
       meleeBossContactDamageMultiplier: 0.7,
-      finalWaveSpawnMultiplier: 0.75,
+      finalWaveSpawnMultiplier: 0.72,
       finalWaveEliteChanceBonus: 0.05,
-      finalWaveMaxEnemiesBonus: 16,
+      finalWaveMaxEnemiesBonus: 18,
       bossRushBossCount: 4,
       bossRushRunDuration: 240,
       bossRushSpawnDelay: 1.2,
@@ -47,17 +48,17 @@
     abyss: {
       maxDepth: 20,
       enemyHpPerDepth: 0.08,
-      enemySpeedPerDepth: 0.025,
+      enemySpeedPerDepth: 0.02,
       enemyDamagePerDepth: 0.05,
       bossHpPerDepth: 0.1,
-      eliteChancePerDepth: 0.006,
-      rewardPerDepth: 0.08,
-      maxEnemyHpMultiplier: 3,
+      eliteChancePerDepth: 0.005,
+      rewardPerDepth: 0.06,
+      maxEnemyHpMultiplier: 4.2,
       maxEnemySpeedMultiplier: 1.6,
-      maxEnemyDamageMultiplier: 2.5,
-      maxBossHpMultiplier: 3.5,
-      maxEliteChanceBonus: 0.15,
-      maxRewardMultiplier: 2.8
+      maxEnemyDamageMultiplier: 3,
+      maxBossHpMultiplier: 5,
+      maxEliteChanceBonus: 0.18,
+      maxRewardMultiplier: 3.5
     },
 
     mastery: {
@@ -597,11 +598,12 @@
     },
 
     waves: [
-      { start: 0, end: 30, spawnInterval: 0.92, weights: { normal: 80, fast: 20, tank: 0 } },
-      { start: 30, end: 60, spawnInterval: 0.68, weights: { normal: 48, fast: 40, tank: 12 } },
-      { start: 60, end: 90, spawnInterval: 0.5, weights: { normal: 34, fast: 32, tank: 34 } },
-      { start: 90, end: 120, spawnInterval: 0.4, weights: { normal: 28, fast: 42, tank: 30 } },
-      { start: 120, end: 180, spawnInterval: 0.5, weights: { normal: 34, fast: 40, tank: 26 } }
+      { start: 0, end: 60, spawnInterval: 0.98, weights: { normal: 84, fast: 16, tank: 0 } },
+      { start: 60, end: 120, spawnInterval: 0.78, weights: { normal: 58, fast: 32, tank: 10 } },
+      { start: 120, end: 180, spawnInterval: 0.58, weights: { normal: 42, fast: 30, tank: 28 } },
+      { start: 180, end: 210, spawnInterval: 0.48, weights: { normal: 34, fast: 38, tank: 28 } },
+      { start: 210, end: 270, spawnInterval: 0.43, weights: { normal: 30, fast: 40, tank: 30 } },
+      { start: 270, end: 300, spawnInterval: 0.34, weights: { normal: 24, fast: 46, tank: 30 } }
     ],
 
     challenges: [
@@ -652,7 +654,7 @@
         shortName: "생존",
         icon: "⏱",
         rarity: "common",
-        description: "3분 생존과 보스 처치 후 최종 웨이브로 진행합니다.",
+        description: "5분 생존과 보스 처치 후 최종 웨이브로 진행합니다.",
         rewardMultiplier: 1
       },
       {
