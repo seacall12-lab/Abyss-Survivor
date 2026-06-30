@@ -207,18 +207,38 @@
     return !!(run && run.finalWaveStarted && !run.finished && safeNumber(run.remainingTime, 0) > 0);
   }
 
+  function getFinalWaveForceTime(run) {
+    const game = Data.game || {};
+    const runDuration = safeNumber(run && run.runDuration, safeNumber(game.runDuration, 300));
+    const configured = safeNumber(game.finalWaveForceTime, 270);
+
+    return clamp(configured, Math.max(1, safeNumber(run && run.bossSpawnTime, safeNumber(game.bossSpawnTime, 210))), Math.max(1, runDuration - 5));
+  }
+
+  function getDepthPower(run) {
+    const abyssModifiers = run && run.abyssModifiers ? run.abyssModifiers : {};
+    return Math.max(0, safeNumber(abyssModifiers.depthPower, safeNumber(run && run.selectedDepth, 0)));
+  }
+
+  function getFinalWaveDepthScale(run) {
+    const depthPower = getDepthPower(run);
+
+    return clamp(1 + Math.max(0, depthPower - 5) * 0.035, 1, 1.8);
+  }
+
   function getMaxEnemies(run) {
     const game = Data.game || {};
     const modifiers = getChallengeModifiers(run);
     const baseMax = Math.max(1, safeNumber(game.maxEnemies, 80));
-    const bonus = isFinalWaveActive(run) ? Math.max(0, safeNumber(game.finalWaveMaxEnemiesBonus, 0)) : 0;
+    const depthFinalBonus = isFinalWaveActive(run) ? Math.floor(Math.max(0, getDepthPower(run) - 5) * 1.2) : 0;
+    const bonus = isFinalWaveActive(run) ? Math.max(0, safeNumber(game.finalWaveMaxEnemiesBonus, 0)) + depthFinalBonus : 0;
     const eventBonus = Math.max(0, safeNumber(modifiers.maxEnemiesBonus, 0));
 
     if (isBossRushRun(run)) {
       return clamp(Math.max(24, safeNumber(game.bossRushMaxEnemies, 46)) + eventBonus, 1, 90);
     }
 
-    return clamp(baseMax + bonus + eventBonus, 1, 140);
+    return clamp(baseMax + bonus + eventBonus, 1, 150);
   }
 
   function isInsideTargetViewport(run, enemy, margin) {
@@ -555,15 +575,15 @@
     const modifiers = ["giant", "swift", "toxic", "splitter", "volatile", "armored", "regen", "summoner"];
     const elapsed = safeNumber(run && run.time, 0);
     const runModifiers = getChallengeModifiers(run);
-    const maxElites = Math.max(0, safeNumber(game.maxEliteEnemies, 3) + (isFinalWaveActive(run) ? 1 : 0));
+    const maxElites = Math.max(0, safeNumber(game.maxEliteEnemies, 3) + (isFinalWaveActive(run) ? 1 + Math.floor(Math.max(0, getDepthPower(run) - 10) / 6) : 0));
     const baseChance = clamp(safeNumber(game.eliteChance, 0.07), 0, 0.25);
     const challengeBonus = run && run.selectedChallengeId !== "normal" ? 0.02 : 0;
     const zoneBonus = (run && run.selectedZoneId === "abyssCore" ? 0.01 : 0) + safeNumber(zone.eliteChanceBonus, 0);
     const abyssBonus = safeNumber(run && run.abyssModifiers && run.abyssModifiers.eliteChanceBonus, 0);
     const splitterBonus = safeNumber(zone.splitterChanceBonus, 0);
-    const finalWaveBonus = isFinalWaveActive(run) ? safeNumber(game.finalWaveEliteChanceBonus, 0.05) : 0;
+    const finalWaveBonus = isFinalWaveActive(run) ? safeNumber(game.finalWaveEliteChanceBonus, 0.05) * getFinalWaveDepthScale(run) : 0;
     const eventBonus = safeNumber(runModifiers.eliteChanceBonus, 0);
-    const chance = clamp(baseChance + challengeBonus + zoneBonus + abyssBonus + finalWaveBonus + eventBonus, 0, 0.45);
+    const chance = clamp(baseChance + challengeBonus + zoneBonus + abyssBonus + finalWaveBonus + eventBonus, 0, 0.55);
     let modifier;
 
     if (!enemy || enemy.isBoss || elapsed < 60 || countEliteEnemies(run) >= maxElites || Math.random() > chance) {
@@ -640,7 +660,8 @@
       if (Object.prototype.hasOwnProperty.call(weights, key) && key !== "boss") {
         const timeBonus = key === "tank" ? elapsed * 0.015 : 0;
         const zoneBonus = key === "fast" ? safeNumber(zone.fastEnemyWeightBonus, 0) : 0;
-        const finalWaveBonus = isFinalWaveActive(run) ? (key === "fast" ? 18 : (key === "tank" ? 16 : 0)) : 0;
+        const finalWaveDepthBonus = isFinalWaveActive(run) ? Math.max(0, getDepthPower(run) - 5) : 0;
+        const finalWaveBonus = isFinalWaveActive(run) ? (key === "fast" ? 18 + finalWaveDepthBonus * 0.8 : (key === "tank" ? 16 + finalWaveDepthBonus * 0.7 : 0)) : 0;
         const weight = Math.max(0, safeNumber(weights[key], 0)) + timeBonus + zoneBonus + finalWaveBonus;
 
         if (weight > 0) {
@@ -831,7 +852,7 @@
     const modifiers = getChallengeModifiers(run);
     const elapsed = safeNumber(run.time, 0);
     const wave = getWaveConfig(elapsed);
-    const finalWaveMultiplier = isFinalWaveActive(run) ? safeNumber(game.finalWaveSpawnMultiplier, 0.75) : 1;
+    const finalWaveMultiplier = isFinalWaveActive(run) ? safeNumber(game.finalWaveSpawnMultiplier, 0.72) / getFinalWaveDepthScale(run) : 1;
     const spawnInterval = clamp(safeNumber(wave.spawnInterval, 1.1) * safeNumber(modifiers.spawnIntervalMultiplier, 1) * finalWaveMultiplier, 0.28, 1.5);
 
     if (isBossRushRun(run)) {
@@ -849,6 +870,13 @@
         run.spawnTimer = rushMinionInterval;
       }
       return;
+    }
+
+    if (!run.finalWaveStarted && elapsed >= getFinalWaveForceTime(run) && safeNumber(run.remainingTime, 0) > 0) {
+      run.finalWaveStarted = true;
+      run.finalWaveTimer = 0;
+      run.message = "최종 심연 폭주가 시작되었습니다";
+      run.messageTimer = 3;
     }
 
     if (isFinalWaveActive(run)) {
@@ -1599,7 +1627,7 @@
     while (run.exp >= run.expToNext) {
       run.exp -= run.expToNext;
       run.level = Math.max(1, Math.floor(safeNumber(run.level, 1))) + 1;
-      run.expToNext = Math.max(minExpToNext, Math.floor(safeNumber(run.expToNext, 24) * 1.32 + 10 + Math.max(0, safeNumber(run.level, 1) - 5) * 2));
+      run.expToNext = Math.max(minExpToNext, Math.floor(safeNumber(run.expToNext, 24) * 1.32 + 10 + Math.max(0, safeNumber(run.level, 1) - 5) * 3 + Math.max(0, safeNumber(run.level, 1) - 10) * 5));
       if (shouldOfferRelic(run)) {
         run.relicChoices = chooseRelics(run, 3);
         run.pendingAbilities = run.relicChoices;
