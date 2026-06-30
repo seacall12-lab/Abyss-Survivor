@@ -73,7 +73,7 @@
       maxHp: 100,
       hp: 100,
       speed: 158,
-      damage: 14,
+      damage: 10,
       attackCooldown: 0.5,
       projectileSpeed: 280,
       projectileRadius: 4,
@@ -120,7 +120,7 @@
         tags: ["bullet", "projectile", "abyss"],
         attackType: "projectile",
         cooldownMultiplier: 1,
-        damageMultiplier: 1,
+        damageMultiplier: 0.88,
         projectileCount: 1
       },
       {
@@ -132,7 +132,7 @@
         tags: ["melee", "orbit", "shield"],
         attackType: "orbit",
         cooldownMultiplier: 1.08,
-        damageMultiplier: 0.78,
+        damageMultiplier: 0.68,
         projectileCount: 0
       },
       {
@@ -144,7 +144,7 @@
         tags: ["lightning", "chain", "speed"],
         attackType: "chain",
         cooldownMultiplier: 1.15,
-        damageMultiplier: 0.9,
+        damageMultiplier: 0.78,
         chainCount: 3
       },
       {
@@ -156,7 +156,7 @@
         tags: ["explosion", "area", "abyss"],
         attackType: "mine",
         cooldownMultiplier: 1.25,
-        damageMultiplier: 1.45,
+        damageMultiplier: 1.18,
         radius: 48
       },
       {
@@ -168,7 +168,7 @@
         tags: ["area", "wave", "projectile"],
         attackType: "wave",
         cooldownMultiplier: 1.08,
-        damageMultiplier: 0.88,
+        damageMultiplier: 0.74,
         radius: 118
       },
       {
@@ -181,7 +181,7 @@
         rarity: "rare",
         attackType: "scythe",
         cooldownMultiplier: 1.28,
-        damageMultiplier: 1.15,
+        damageMultiplier: 0.96,
         range: 76,
         arcWidth: 1.35,
         healOnHit: 0.5
@@ -196,7 +196,7 @@
         rarity: "rare",
         attackType: "linePierce",
         cooldownMultiplier: 1.35,
-        damageMultiplier: 1.25,
+        damageMultiplier: 1.02,
         range: 260,
         width: 14,
         pierce: 3
@@ -211,11 +211,85 @@
         rarity: "rare",
         attackType: "spreadProjectile",
         cooldownMultiplier: 1.08,
-        damageMultiplier: 0.65,
+        damageMultiplier: 0.56,
         projectileCount: 5,
         spreadAngle: 0.65
       }
     ],
+
+    supportWeapons: [
+      {
+        id: "supportBullet",
+        name: "보조 탄환",
+        shortName: "보조탄",
+        icon: "•",
+        description: "가까운 적에게 약한 보조 탄환을 발사합니다.",
+        type: "projectile",
+        cooldown: 1.15,
+        damageRatio: 0.34,
+        projectileCount: 1,
+        maxLevel: 3,
+        tags: ["support", "projectile"]
+      },
+      {
+        id: "miniBolt",
+        name: "작은 번개",
+        shortName: "번개",
+        icon: "ϟ",
+        description: "가까운 적 하나에게 짧은 번개를 떨어뜨립니다.",
+        type: "lightning",
+        cooldown: 1.65,
+        damageRatio: 0.42,
+        range: 172,
+        maxLevel: 3,
+        tags: ["support", "lightning"]
+      },
+      {
+        id: "orbitShard",
+        name: "회전 파편",
+        shortName: "파편",
+        icon: "◌",
+        description: "플레이어 주변을 도는 작은 파편을 추가합니다.",
+        type: "orbit",
+        cooldown: 0,
+        damageRatio: 0.28,
+        radius: 38,
+        maxLevel: 3,
+        tags: ["support", "melee", "orbit"]
+      },
+      {
+        id: "miniMine",
+        name: "소형 지뢰",
+        shortName: "지뢰",
+        icon: "◇",
+        description: "일정 시간마다 작은 지뢰를 설치합니다.",
+        type: "mine",
+        cooldown: 2.2,
+        damageRatio: 0.5,
+        radius: 36,
+        maxLevel: 3,
+        tags: ["support", "install", "explosion"]
+      },
+      {
+        id: "echoWave",
+        name: "메아리 파동",
+        shortName: "파동",
+        icon: "≋",
+        description: "짧은 간격으로 주변에 작은 원형 파동을 냅니다.",
+        type: "wave",
+        cooldown: 2.45,
+        damageRatio: 0.36,
+        radius: 74,
+        maxLevel: 3,
+        tags: ["support", "area", "wave"]
+      }
+    ],
+
+    supportWeaponLimits: {
+      maxSlots: 3,
+      maxLevel: 3,
+      offerChance: 0.3
+    },
 
     classes: [
       {
@@ -747,7 +821,7 @@
         rarity: "희귀",
         description: "공격력이 증가하지만 최대 체력이 감소합니다.",
         effect: {
-          damage: 8,
+          damage: 5,
           maxHp: -10
         }
       },
@@ -814,7 +888,7 @@
         rarity: "전설",
         description: "공격력이 크게 증가하지만 받는 피해도 증가합니다.",
         effect: {
-          damage: 12,
+          damage: 7,
           damageTakenMultiplier: 1.1
         }
       },
@@ -927,7 +1001,7 @@
         rarity: "legendary",
         description: "공격력이 크게 증가하지만 받는 피해도 증가합니다.",
         effect: {
-          damage: 16,
+          damage: 10,
           damageTakenMultiplier: 1.12
         }
       },
@@ -938,7 +1012,7 @@
         rarity: "epic",
         description: "피해량이 증가하지만 최대 체력이 감소합니다.",
         effect: {
-          damage: 12,
+          damage: 8,
           maxHp: -18
         }
       },
@@ -960,10 +1034,10 @@
       {
         id: "damageUp",
         name: "공격력 증가",
-        description: "공격력이 증가합니다.",
+        description: "모든 공격의 피해가 조금 증가합니다.",
         type: "stat",
         stat: "damage",
-        value: 4,
+        value: 2,
         tags: ["damage", "bullet"],
         category: "normal",
         maxLevel: 5
