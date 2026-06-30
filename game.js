@@ -128,6 +128,40 @@
     return findById(Data.weapons, run && run.selectedWeaponId, "abyssBullet");
   }
 
+  function getSupportWeaponData(id) {
+    return findById(Data.supportWeapons, id, "supportBullet");
+  }
+
+  function getSupportWeaponLimits() {
+    const limits = Data.supportWeaponLimits || {};
+    return {
+      maxSlots: clamp(safeInteger(limits.maxSlots, 3), 1, 6),
+      maxLevel: clamp(safeInteger(limits.maxLevel, 3), 1, 6),
+      offerChance: clamp(safeNumber(limits.offerChance, 0.3), 0, 1)
+    };
+  }
+
+  function findRunSupportWeapon(run, id) {
+    const supportWeapons = run && Array.isArray(run.supportWeapons) ? run.supportWeapons : [];
+
+    for (let i = 0; i < supportWeapons.length; i += 1) {
+      if (supportWeapons[i] && supportWeapons[i].id === id) {
+        return supportWeapons[i];
+      }
+    }
+
+    return null;
+  }
+
+  function ensureRunCollections(run) {
+    if (!run.supportWeapons) {
+      run.supportWeapons = [];
+    }
+    if (!run.damageStats) {
+      run.damageStats = {};
+    }
+  }
+
   function getViewportWidth() {
     return Math.max(1, safeNumber((Data.game || {}).width, 360));
   }
@@ -241,7 +275,7 @@
     const weaponMasteryDamage = weaponMasteryLevel >= 3 ? 1.03 : 1;
     const weaponMasteryCooldown = weaponMasteryLevel >= 5 ? 0.97 : 1;
     const weaponMasterySize = weaponMasteryLevel >= 7 ? 1.03 : 1;
-    const damageBonus = 1 + powerGrowth * 0.18;
+    const damageBonus = 1 + powerGrowth * 0.12;
     const cooldownBonus = 1 - speedGrowth * 0.08;
     const sizeBonus = 1 + sizeGrowth * 0.08;
     const weaponTags = Array.isArray(weapon.tags) ? weapon.tags : [];
@@ -305,6 +339,30 @@
     stats.spreadDamage = clamp(stats.damage * safeNumber(player.spreadDamageMultiplier, 1), 1, 999);
 
     return stats;
+  }
+
+  function getSupportWeaponStats(run, supportWeapon) {
+    const supportData = getSupportWeaponData(supportWeapon && supportWeapon.id);
+    const player = run && run.player ? run.player : {};
+    const level = clamp(safeInteger(supportWeapon && supportWeapon.level, 1), 1, getSupportWeaponLimits().maxLevel);
+    const levelBonus = 1 + (level - 1) * 0.24;
+    const baseDamage = Math.max(1, safeNumber(player.damage, safeNumber((Data.player || {}).damage, 10)));
+    const baseProjectileSpeed = Math.max(1, safeNumber((Data.player || {}).projectileSpeed, 280));
+    const baseProjectileRadius = Math.max(1, safeNumber((Data.player || {}).projectileRadius, 4));
+    const speedScale = clamp(safeNumber(player.projectileSpeed, baseProjectileSpeed) / baseProjectileSpeed, 0.65, 2.4);
+    const sizeScale = clamp(safeNumber(player.projectileRadius, baseProjectileRadius) / baseProjectileRadius, 0.65, 2.6);
+
+    return {
+      data: supportData,
+      level: level,
+      damage: clamp(baseDamage * safeNumber(supportData.damageRatio, 0.35) * levelBonus, 1, 999),
+      cooldown: clamp(safeNumber(supportData.cooldown, 1.5) * (1 - (level - 1) * 0.08), 0.35, 6),
+      projectileCount: clamp(safeInteger(supportData.projectileCount, 1) + (level >= 3 ? 1 : 0), 1, 4),
+      projectileSpeed: clamp(safeNumber(player.projectileSpeed, baseProjectileSpeed) * (0.9 + speedScale * 0.08), 60, 820),
+      projectileRadius: clamp(safeNumber(player.projectileRadius, baseProjectileRadius) * 0.72 * sizeScale, 2, 14),
+      range: clamp(safeNumber(supportData.range, 150) * (1 + (level - 1) * 0.08), 80, 260),
+      radius: clamp(safeNumber(supportData.radius, 48) * (0.9 + sizeScale * 0.1) * (1 + (level - 1) * 0.12), 20, 140)
+    };
   }
 
   function pushEffect(run, effect) {
@@ -373,6 +431,76 @@
       maxLife: 0.55,
       vy: -24
     });
+  }
+
+  function recordDamage(run, sourceId, sourceName, amount, target) {
+    const damage = safeNumber(amount, 0);
+    const id = typeof sourceId === "string" && sourceId ? sourceId : "unknown";
+    const name = typeof sourceName === "string" && sourceName ? sourceName : "알 수 없는 공격";
+    let entry;
+
+    if (!run || !Number.isFinite(damage) || damage <= 0) {
+      return null;
+    }
+
+    if (!run.damageStats || typeof run.damageStats !== "object") {
+      run.damageStats = {};
+    }
+
+    entry = run.damageStats[id];
+    if (!entry) {
+      entry = {
+        name: name,
+        damage: 0,
+        hits: 0,
+        bossDamage: 0,
+        eliteDamage: 0
+      };
+      run.damageStats[id] = entry;
+    }
+
+    entry.name = name;
+    entry.damage = Math.max(0, safeNumber(entry.damage, 0) + damage);
+    entry.hits = Math.max(0, safeInteger(entry.hits, 0) + 1);
+    if (target && target.isBoss) {
+      entry.bossDamage = Math.max(0, safeNumber(entry.bossDamage, 0) + damage);
+    }
+    if (target && target.elite) {
+      entry.eliteDamage = Math.max(0, safeNumber(entry.eliteDamage, 0) + damage);
+    }
+
+    return entry;
+  }
+
+  function getDamageRanking(run, limit) {
+    const stats = run && run.damageStats && typeof run.damageStats === "object" ? run.damageStats : {};
+    const survivalTime = Math.max(1, safeNumber(run && run.time, 0));
+    const rows = [];
+    let key;
+
+    for (key in stats) {
+      if (Object.prototype.hasOwnProperty.call(stats, key)) {
+        const entry = stats[key] || {};
+        const damage = Math.max(0, safeNumber(entry.damage, 0));
+        if (damage > 0) {
+          rows.push({
+            id: key,
+            name: entry.name || "알 수 없는 공격",
+            damage: damage,
+            hits: safeInteger(entry.hits, 0),
+            bossDamage: Math.max(0, safeNumber(entry.bossDamage, 0)),
+            eliteDamage: Math.max(0, safeNumber(entry.eliteDamage, 0)),
+            dps: damage / survivalTime
+          });
+        }
+      }
+    }
+
+    rows.sort(function (a, b) {
+      return b.damage - a.damage;
+    });
+
+    return rows.slice(0, Math.max(1, safeInteger(limit, 5)));
   }
 
   function pushImpactEffect(run, target, type, radius) {
@@ -779,6 +907,7 @@
     const speed = Math.max(0, safeNumber(stats.projectileSpeed, 280));
     const config = options || {};
     const hasPierceOverride = Object.prototype.hasOwnProperty.call(config, "pierce");
+    const weapon = getWeapon(run);
 
     if (run.projectiles.length >= maxProjectiles) {
       return false;
@@ -795,6 +924,8 @@
       life: Math.max(0.1, safeNumber((Data.projectile || {}).lifeTime, 2.2)),
       pierce: hasPierceOverride ? Math.max(0, safeInteger(config.pierce, 0)) : (run.evolutions && run.evolutions.piercingShot ? 1 : Math.max(0, safeNumber((Data.projectile || {}).pierce, 0))),
       color: config.color || "",
+      sourceId: config.sourceId || weapon.id || "abyssBullet",
+      sourceName: config.sourceName || weapon.name || "기본 공격",
       hitIds: {}
     });
 
@@ -911,6 +1042,8 @@
         run.orbitals[i].damage = stats.orbitDamage;
         run.orbitals[i].speed = stats.orbitAngularSpeed;
         run.orbitals[i].hitCooldown = stats.orbitHitCooldown;
+        run.orbitals[i].sourceId = stats.weapon.id;
+        run.orbitals[i].sourceName = stats.weapon.name;
         weaponCount += 1;
       }
     }
@@ -947,7 +1080,7 @@
           lineWidth: stats.chainWidth,
           life: 0.18
         });
-        damageEnemy(run, current, Math.max(1, stats.chainDamage * (i === 0 ? 1 : 0.65)), "lightning");
+        damageEnemy(run, current, Math.max(1, stats.chainDamage * (i === 0 ? 1 : 0.65)), "lightning", weapon.id, weapon.name);
 
         previous = current;
         current = null;
@@ -974,6 +1107,8 @@
         y: safeNumber(player.y, 0) + Math.sin(angle) * offset,
         radius: stats.mineRadius,
         damage: stats.mineDamage,
+        sourceId: weapon.id,
+        sourceName: weapon.name,
         armTimer: stats.mineArmTimer,
         life: 1.1,
         triggered: false
@@ -1015,7 +1150,7 @@
         const dot = waveDir.x * toEnemy.x + waveDir.y * toEnemy.y;
         if (!hitIds[enemyId] && isEnemyTargetable(run, enemy, player, stats.waveRadius, margin) && dot > 0.42) {
           hitIds[enemyId] = true;
-          damageEnemy(run, enemy, Math.max(3, stats.waveDamage), "wave");
+          damageEnemy(run, enemy, Math.max(3, stats.waveDamage), "wave", weapon.id, weapon.name);
         }
       }
     }
@@ -1056,7 +1191,7 @@
 
         if (!hitIds[enemyId] && isEnemyTargetable(run, enemy, player, range, margin) && dot >= Math.cos(stats.scytheArc)) {
           hitIds[enemyId] = true;
-          damageEnemy(run, enemy, stats.scytheDamage, "slash");
+          damageEnemy(run, enemy, stats.scytheDamage, "slash", weapon.id, weapon.name);
           hitCount += 1;
         }
       }
@@ -1101,7 +1236,7 @@
 
         if (!hitIds[enemyId] && isEnemyTargetable(run, enemy, player, stats.lineRange + safeNumber(enemy.radius, 8), margin) && distanceToSegmentSquared(enemy, fromX, fromY, toX, toY) <= hitWidth * hitWidth) {
           hitIds[enemyId] = true;
-          damageEnemy(run, enemy, stats.lineDamage, "linePierce");
+          damageEnemy(run, enemy, stats.lineDamage, "linePierce", weapon.id, weapon.name);
           hitCount += 1;
         }
       }
@@ -1120,7 +1255,9 @@
         damage: stats.spreadDamage,
         radius: Math.max(2, stats.projectileRadius * 0.86),
         pierce: run.evolutions && run.evolutions.piercingShot ? 1 : 0,
-        color: "#ffe28a"
+        color: "#ffe28a",
+        sourceId: weapon.id,
+        sourceName: weapon.name
       });
     }
 
@@ -1215,6 +1352,167 @@
     }
   }
 
+  function fireSupportBullet(run, supportWeapon, stats) {
+    const player = run.player;
+    const nearest = findNearestEnemy(run, player, null, 320, getViewportMargin());
+
+    if (!nearest) {
+      return;
+    }
+
+    const dir = normalize(safeNumber(nearest.x, 0) - safeNumber(player.x, 0), safeNumber(nearest.y, 0) - safeNumber(player.y, 0));
+    const count = Math.max(1, safeInteger(stats.projectileCount, 1));
+    for (let i = 0; i < count; i += 1) {
+      const offset = count === 1 ? 0 : (i - (count - 1) / 2) * 0.16;
+      pushProjectile(run, player.x, player.y, dir.x, dir.y, offset, {
+        damage: stats.damage,
+        radius: stats.projectileRadius,
+        color: "#c8edf7",
+        sourceId: supportWeapon.id,
+        sourceName: stats.data.name
+      });
+    }
+  }
+
+  function fireSupportBolt(run, supportWeapon, stats) {
+    const player = run.player;
+    const target = findNearestEnemy(run, player, null, stats.range, getViewportMargin());
+
+    if (!target) {
+      return;
+    }
+
+    pushEffect(run, {
+      type: "lightning",
+      fromX: safeNumber(player.x, 0),
+      fromY: safeNumber(player.y, 0),
+      toX: safeNumber(target.x, 0),
+      toY: safeNumber(target.y, 0),
+      lineWidth: 2 + stats.level,
+      life: 0.14
+    });
+    damageEnemy(run, target, stats.damage, "lightning", supportWeapon.id, stats.data.name);
+  }
+
+  function ensureSupportOrbitals(run, supportWeapon, stats) {
+    const supportId = supportWeapon.id;
+    const desiredCount = stats.level >= 3 ? 2 : 1;
+    let count = 0;
+
+    if (!run.orbitals) {
+      run.orbitals = [];
+    }
+
+    for (let i = 0; i < run.orbitals.length; i += 1) {
+      if (run.orbitals[i].supportId === supportId) {
+        count += 1;
+      }
+    }
+
+    while (count < desiredCount) {
+      run.orbitals.push({
+        supportId: supportId,
+        angle: 0,
+        phase: 0
+      });
+      count += 1;
+    }
+
+    for (let i = run.orbitals.length - 1; i >= 0 && count > desiredCount; i -= 1) {
+      if (run.orbitals[i].supportId === supportId) {
+        run.orbitals.splice(i, 1);
+        count -= 1;
+      }
+    }
+
+    count = 0;
+    for (let i = 0; i < run.orbitals.length; i += 1) {
+      if (run.orbitals[i].supportId === supportId) {
+        run.orbitals[i].phase = (Math.PI * 2 * count) / Math.max(1, desiredCount);
+        run.orbitals[i].distance = stats.radius;
+        run.orbitals[i].radius = clamp(5 + stats.level, 5, 10);
+        run.orbitals[i].damage = stats.damage;
+        run.orbitals[i].speed = clamp(2.6 + stats.level * 0.22, 2, 4);
+        run.orbitals[i].hitCooldown = clamp(0.58 - stats.level * 0.06, 0.32, 0.6);
+        run.orbitals[i].sourceId = supportId;
+        run.orbitals[i].sourceName = stats.data.name;
+        count += 1;
+      }
+    }
+  }
+
+  function fireSupportMine(run, supportWeapon, stats) {
+    const player = run.player;
+    const angle = safeNumber(run.time, 0) * 1.7;
+    const offset = stats.level >= 2 ? 18 : 8;
+
+    pushEffect(run, {
+      type: "mine",
+      x: safeNumber(player.x, 0) + Math.cos(angle) * offset,
+      y: safeNumber(player.y, 0) + Math.sin(angle) * offset,
+      radius: stats.radius,
+      damage: stats.damage,
+      sourceId: supportWeapon.id,
+      sourceName: stats.data.name,
+      armTimer: clamp(0.38 - stats.level * 0.04, 0.18, 0.4),
+      life: 1,
+      triggered: false
+    });
+  }
+
+  function fireSupportWave(run, supportWeapon, stats) {
+    const player = run.player;
+
+    pushEffect(run, {
+      type: "explosion",
+      x: safeNumber(player.x, 0),
+      y: safeNumber(player.y, 0),
+      radius: stats.radius,
+      life: 0.24,
+      maxLife: 0.24
+    });
+
+    for (let i = run.enemies.length - 1; i >= 0; i -= 1) {
+      const enemy = run.enemies[i];
+      const hitRadius = stats.radius + safeNumber(enemy.radius, 8);
+      if (distanceSquared(player, enemy) <= hitRadius * hitRadius) {
+        damageEnemy(run, enemy, stats.damage, "wave", supportWeapon.id, stats.data.name);
+      }
+    }
+  }
+
+  function updateSupportWeapons(run, delta) {
+    const supportWeapons = run && Array.isArray(run.supportWeapons) ? run.supportWeapons : [];
+
+    for (let i = 0; i < supportWeapons.length; i += 1) {
+      const supportWeapon = supportWeapons[i];
+      const stats = getSupportWeaponStats(run, supportWeapon);
+      const type = stats.data.type || "projectile";
+
+      supportWeapon.level = stats.level;
+      if (type === "orbit") {
+        ensureSupportOrbitals(run, supportWeapon, stats);
+        continue;
+      }
+
+      supportWeapon.cooldown = Math.max(0, safeNumber(supportWeapon.cooldown, 0) - delta);
+      if (supportWeapon.cooldown > 0) {
+        continue;
+      }
+
+      supportWeapon.cooldown = stats.cooldown;
+      if (type === "lightning") {
+        fireSupportBolt(run, supportWeapon, stats);
+      } else if (type === "mine") {
+        fireSupportMine(run, supportWeapon, stats);
+      } else if (type === "wave") {
+        fireSupportWave(run, supportWeapon, stats);
+      } else {
+        fireSupportBullet(run, supportWeapon, stats);
+      }
+    }
+  }
+
   function updateAttack(run, delta) {
     const cooldown = getWeaponStats(run).cooldown;
 
@@ -1265,7 +1563,7 @@
             const enemy = run.enemies[j];
             const hitRadius = safeNumber(effect.radius, 48) + safeNumber(enemy.radius, 8);
             if (distanceSquared(effect, enemy) <= hitRadius * hitRadius) {
-              damageEnemy(run, enemy, safeNumber(effect.damage, 12), "explosion");
+              damageEnemy(run, enemy, safeNumber(effect.damage, 12), "explosion", effect.sourceId, effect.sourceName);
             }
           }
         }
@@ -1357,8 +1655,54 @@
     return result;
   }
 
+  function createSupportChoice(run, supportData, isUpgrade) {
+    const owned = findRunSupportWeapon(run, supportData.id);
+    const nextLevel = clamp(safeInteger(owned && owned.level, 0) + 1, 1, getSupportWeaponLimits().maxLevel);
+    const category = isUpgrade ? "supportUpgrade" : "support";
+
+    return {
+      id: (isUpgrade ? "supportUpgrade:" : "support:") + supportData.id,
+      supportId: supportData.id,
+      name: (isUpgrade ? "[보조강화] " : "[보조무기] ") + supportData.name + (isUpgrade ? " Lv." + nextLevel : ""),
+      description: isUpgrade ? supportData.name + "의 피해와 효율이 증가합니다." : supportData.description,
+      rarity: isUpgrade ? "uncommon" : "rare",
+      category: category,
+      type: category,
+      tags: supportData.tags || []
+    };
+  }
+
+  function chooseSupportChoices(run) {
+    const supports = Array.isArray(Data.supportWeapons) ? Data.supportWeapons : [];
+    const limits = getSupportWeaponLimits();
+    const ownedCount = run && Array.isArray(run.supportWeapons) ? run.supportWeapons.length : 0;
+    const pool = [];
+    const result = [];
+
+    for (let i = 0; i < supports.length; i += 1) {
+      const supportData = supports[i];
+      const owned = findRunSupportWeapon(run, supportData.id);
+      if (owned) {
+        if (safeInteger(owned.level, 1) < Math.min(limits.maxLevel, safeInteger(supportData.maxLevel, limits.maxLevel))) {
+          pool.push(createSupportChoice(run, supportData, true));
+        }
+      } else if (ownedCount < limits.maxSlots) {
+        pool.push(createSupportChoice(run, supportData, false));
+      }
+    }
+
+    while (pool.length && result.length < 2) {
+      const index = Math.floor(Math.random() * pool.length);
+      result.push(pool.splice(index, 1)[0]);
+    }
+
+    return result;
+  }
+
   function chooseAbilities(abilities, count) {
     const run = AS.State && AS.State.getRun ? AS.State.getRun() : null;
+    const supportChoices = run ? chooseSupportChoices(run) : [];
+    const limits = getSupportWeaponLimits();
     const pool = [];
     const result = [];
 
@@ -1384,9 +1728,17 @@
       pool.push(ability);
     }
 
+    if (supportChoices.length > 0 && (Math.random() < limits.offerChance || pool.length < count)) {
+      result.push(supportChoices.shift());
+    }
+
     while (pool.length && result.length < count) {
       const index = Math.floor(Math.random() * pool.length);
       result.push(pool.splice(index, 1)[0]);
+    }
+
+    while (supportChoices.length && result.length < count) {
+      result.push(supportChoices.shift());
     }
 
     return result;
@@ -1406,7 +1758,9 @@
       distance: 42,
       radius: 7,
       damage: 8,
-      speed: 2.8
+      speed: 2.8,
+      sourceId: "orbitalShield",
+      sourceName: "회전 보호막"
     });
   }
 
@@ -1556,7 +1910,7 @@
         }
 
         if (distanceSquared(projectile, enemy) <= hitRadius * hitRadius) {
-          damageEnemy(run, enemy, Math.max(1, safeNumber(projectile.damage, 1)), "projectile");
+            damageEnemy(run, enemy, Math.max(1, safeNumber(projectile.damage, 1)), "projectile", projectile.sourceId, projectile.sourceName);
           hitIds[enemyId] = true;
           projectile.hitIds = hitIds;
 
@@ -1612,10 +1966,14 @@
     }
   }
 
-  function damageEnemy(run, enemy, amount, type) {
+  function damageEnemy(run, enemy, amount, type, sourceId, sourceName) {
     const player = run && run.player ? run.player : {};
     let damage = Math.max(1, safeNumber(amount, 1));
     const damageType = type || "projectile";
+    const weapon = getWeapon(run);
+    const statSourceId = sourceId || (weapon && weapon.id) || damageType;
+    const statSourceName = sourceName || (weapon && weapon.name) || "기본 공격";
+    const beforeHp = Math.max(0, safeNumber(enemy && enemy.hp, 0));
 
     if (!run || !enemy) {
       return;
@@ -1631,6 +1989,7 @@
     damage = Math.max(1, damage);
 
     enemy.hp = safeNumber(enemy.hp, 0) - damage;
+    recordDamage(run, statSourceId, statSourceName, Math.min(beforeHp, damage), enemy);
     enemy.hitFlashTimer = Math.max(safeNumber(enemy.hitFlashTimer, 0), 0.1);
     pushImpactEffect(run, enemy, damageType, safeNumber(enemy.radius, 8) + (damageType === "explosion" ? 12 : 6));
     pushDamageText(run, safeNumber(enemy.x, 0), safeNumber(enemy.y, 0) - safeNumber(enemy.radius, 8), damage, getEffectColor(damageType));
@@ -1662,7 +2021,7 @@
 
         if (enemy.orbitalHitTimer <= 0 && distanceSquared(orbital, enemy) <= hitRadius * hitRadius) {
           enemy.orbitalHitTimer = safeNumber(orbital.hitCooldown, 0.45);
-          damageEnemy(run, enemy, Math.max(2, safeNumber(orbital.damage, safeNumber(run.player.damage, 12) * 0.65) * safeNumber(player.orbitalDamageMultiplier, 1)), "slash");
+          damageEnemy(run, enemy, Math.max(2, safeNumber(orbital.damage, safeNumber(run.player.damage, 12) * 0.65) * safeNumber(player.orbitalDamageMultiplier, 1)), "slash", orbital.sourceId, orbital.sourceName);
         }
       }
     }
@@ -1693,7 +2052,7 @@
       const hitRadius = radius + safeNumber(enemy.radius, 8);
 
       if (distanceSquared(player, enemy) <= hitRadius * hitRadius) {
-        damageEnemy(run, enemy, Math.max(4, safeNumber(player.damage, 12) * 1.5), "explosion");
+        damageEnemy(run, enemy, Math.max(3, safeNumber(player.damage, 12) * 0.95), "explosion", "abyssNova", "심연 폭발");
         hitCount += 1;
       }
     }
@@ -1947,6 +2306,30 @@
     }
   }
 
+  function applySupportWeaponAbility(run, ability) {
+    const limits = getSupportWeaponLimits();
+    const supportData = getSupportWeaponData(ability && ability.supportId);
+    let owned;
+
+    ensureRunCollections(run);
+    owned = findRunSupportWeapon(run, supportData.id);
+
+    if (owned) {
+      owned.level = Math.min(Math.min(limits.maxLevel, safeInteger(supportData.maxLevel, limits.maxLevel)), safeInteger(owned.level, 1) + 1);
+      owned.cooldown = Math.min(safeNumber(owned.cooldown, 0), 0.2);
+      run.message = supportData.name + " Lv." + owned.level;
+    } else if (run.supportWeapons.length < limits.maxSlots) {
+      run.supportWeapons.push({
+        id: supportData.id,
+        level: 1,
+        cooldown: 0
+      });
+      run.message = supportData.name + " 획득";
+    }
+
+    run.messageTimer = 2;
+  }
+
   function hasRelic(run, relicId) {
     const relics = run && run.relics ? run.relics : [];
 
@@ -2187,6 +2570,14 @@
       return getBossContactDamageMultiplier(run || (AS.State && AS.State.getRun ? AS.State.getRun() : null));
     },
 
+    recordDamage: function (run, sourceId, sourceName, amount, target) {
+      return recordDamage(run || (AS.State && AS.State.getRun ? AS.State.getRun() : null), sourceId, sourceName, amount, target);
+    },
+
+    getDamageRanking: function (run, limit) {
+      return getDamageRanking(run || (AS.State && AS.State.getRun ? AS.State.getRun() : null), limit || 5);
+    },
+
     update: function (run, delta) {
       const game = Data.game || {};
       const safeDelta = clamp(safeNumber(delta, 0), 0, 0.05);
@@ -2195,6 +2586,7 @@
         return;
       }
 
+      ensureRunCollections(run);
       run.time = Math.max(0, safeNumber(run.time, 0) + safeDelta);
       run.remainingTime = Math.max(0, safeNumber(run.runDuration, safeNumber(game.runDuration, 180)) - run.time);
       if (!run.initialBuildChecked) {
@@ -2211,6 +2603,7 @@
         return;
       }
       updateAttack(run, safeDelta);
+      updateSupportWeapons(run, safeDelta);
       updateEffects(run, safeDelta);
       updateDamageTexts(run, safeDelta);
       updateProjectiles(run, safeDelta);
@@ -2261,6 +2654,8 @@
 
       if ((selected.category || "normal") === "relic" || selected.type === "relic") {
         applyRelicEffect(run, selected);
+      } else if (selected.type === "support" || selected.type === "supportUpgrade") {
+        applySupportWeaponAbility(run, selected);
       } else if ((selected.category || "normal") === "evolution" || selected.type === "evolution") {
         applyEvolution(run, selected);
       } else {
