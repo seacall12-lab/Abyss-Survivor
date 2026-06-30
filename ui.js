@@ -1193,7 +1193,7 @@
       const exp = Math.floor(Math.max(0, safeNumber(run && run.exp, 0)));
       const expToNext = Math.max(1, Math.floor(safeNumber(run && run.expToNext, 20)));
       const expRatio = clamp((exp / expToNext) * 100, 0, 100);
-      const timeValue = formatTime(run ? run.remainingTime : safeNumber((Data.game || {}).runDuration, 180));
+      const timeValue = formatTime(run ? run.remainingTime : safeNumber((Data.game || {}).runDuration, 300));
       const killValue = Math.max(0, Math.floor(safeNumber(run && run.kills, 0)));
       const modeValue = run && run.mode ? run.mode : "";
       const hudSignature = [hp, maxHp, exp, expToNext, timeValue, killValue, modeValue].join("|");
@@ -1290,7 +1290,7 @@
           title.textContent = "Abyss Survivor";
         }
         if (message) {
-          message.textContent = "3분 생존 · 보스 처치 후 심연 폭주";
+          message.textContent = "5분 생존 · 보스 처치 후 최종 심연 폭주";
         }
         if (elements.startButton) {
           elements.startButton.textContent = "▶ 시작";
@@ -1463,7 +1463,7 @@
         resultText + " · ⏱ " + formatTime(run.time) + " · ☠ " + safeInteger(run.kills, 0) + " · Lv " + safeInteger(run.level, 1),
         "⬟ " + classItem.name + " / ● " + weaponItem.name + " / ◇ " + zoneItem.name + " / 모드 " + (runModeItem.name || "생존") + " / ○ " + challengeItem.name + " / 이벤트 " + (eventItem.name || "일반") + " / 심연 " + safeInteger(run.selectedDepth, 0) + " x" + safeNumber(run.rewardMultiplier, 1).toFixed(2),
         "◆ +" + safeInteger(run.shardReward, 0) + " · 임무 +" + safeInteger(run.missionShardReward, 0) + " · 보유 " + safeInteger(save.shards, 0),
-        (run.selectedRunModeId === "bossRush" ? "보스 러시: " + safeInteger(run.bossRushDefeated, 0) + "/" + safeInteger(run.bossRushBossCount, 0) : "3분 생존: " + (run.mode === (states.clear || "clear") ? "성공" : "실패")) + " · 보스 처치: " + (run.bossDefeated ? "성공" : "미달성"),
+        (run.selectedRunModeId === "bossRush" ? "보스 러시: " + safeInteger(run.bossRushDefeated, 0) + "/" + safeInteger(run.bossRushBossCount, 0) : "5분 생존: " + (run.mode === (states.clear || "clear") ? "성공" : "실패")) + " · 보스 처치: " + (run.bossDefeated ? "성공" : "미달성"),
         "임무: " + missionText,
         "숙련도 +" + safeInteger(run.masteryExpGained, 0) + (run.depthUnlocked ? " · 다음 심연 단계 해금" : ""),
         "신규 해금: " + unlocks,
