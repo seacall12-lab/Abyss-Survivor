@@ -12,7 +12,7 @@
   let lastOverlaySignature = "";
   let activeLobbyModal = "";
   const pointerDeadZone = 10;
-  const pointerMaxDistance = 70;
+  const pointerMaxDistance = 88;
 
   function findElement() {
     for (let i = 0; i < arguments.length; i += 1) {
@@ -39,6 +39,22 @@
     const minutes = Math.floor(total / 60);
     const seconds = total % 60;
     return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+  }
+
+  function formatNumber(value) {
+    return String(Math.max(0, Math.round(safeNumber(value, 0)))).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  }
+
+  function formatDamageRanking(run) {
+    const rows = AS.Game && AS.Game.getDamageRanking ? AS.Game.getDamageRanking(run, 5) : [];
+
+    if (!rows.length) {
+      return "공격별 피해: 기록 없음";
+    }
+
+    return "공격별 피해: " + rows.map(function (row, index) {
+      return (index + 1) + ". " + row.name + " " + formatNumber(row.damage) + " / " + safeInteger(row.hits, 0) + "타 / DPS " + formatNumber(row.dps);
+    }).join(" · ");
   }
 
   function setText(element, value) {
@@ -252,6 +268,11 @@
       starCountUp: "✦",
       starPowerUp: "✶",
       starSpreadUp: "✹",
+      supportBullet: "•",
+      miniBolt: "ϟ",
+      orbitShard: "◌",
+      miniMine: "◇",
+      echoWave: "≋",
       bloodCore: "♥",
       sharpHeart: "⚔",
       hunterEye: "◎",
@@ -910,7 +931,8 @@
       return;
     }
 
-    const power = clamp(0.72 + ((length - pointerDeadZone) / Math.max(1, pointerMaxDistance - pointerDeadZone)) * 0.28, 0, 1);
+    const normalized = clamp((length - pointerDeadZone) / Math.max(1, pointerMaxDistance - pointerDeadZone), 0, 1);
+    const power = clamp(0.28 + normalized * 0.72, 0, 1);
     run.input.moveX = clamp((dx / length) * power, -1, 1);
     run.input.moveY = clamp((dy / length) * power, -1, 1);
   }
@@ -1313,6 +1335,14 @@
       closeLobbyModal();
     },
 
+    getPointerTuning: function () {
+      return {
+        deadZone: pointerDeadZone,
+        maxDistance: pointerMaxDistance,
+        minPower: 0.28
+      };
+    },
+
     showLevelUp: function (abilities) {
       const signature = abilities.map(function (ability) {
         return ability.id;
@@ -1332,7 +1362,7 @@
       for (let i = 0; i < abilities.length; i += 1) {
         const ability = abilities[i];
         const button = document.createElement("button");
-        const icon = createIcon(iconFor(ability.id, ability.category), "ability-icon");
+        const icon = createIcon(iconFor(ability.supportId || ability.id, ability.category), "ability-icon");
         const body = document.createElement("span");
         const tag = document.createElement("em");
         const name = document.createElement("strong");
@@ -1349,7 +1379,7 @@
         body.className = "ability-body";
         tag.className = "ability-tag";
         applyRarityStyle(tag, rarity);
-        tag.textContent = category === "evolution" ? "진화" : (category === "relic" ? "유물 · " + (ability.rarity || "일반") : "강화");
+        tag.textContent = category === "evolution" ? "진화" : (category === "relic" ? "유물 · " + (ability.rarity || "일반") : (category === "support" ? "보조무기" : (category === "supportUpgrade" ? "보조강화" : "강화")));
         tag.textContent = meta.label || "일반";
         name.textContent = ability.name;
         description.textContent = shortenDescription(ability.description);
@@ -1437,6 +1467,7 @@
         "임무: " + missionText,
         "숙련도 +" + safeInteger(run.masteryExpGained, 0) + (run.depthUnlocked ? " · 다음 심연 단계 해금" : ""),
         "신규 해금: " + unlocks,
+        formatDamageRanking(run),
         "엘리트 처치: " + safeInteger(run.eliteKills, 0),
         "유물: " + relics,
         "빌드: " + bonuses
