@@ -444,18 +444,69 @@
     const abyss = Data.abyss || {};
     const upgrades = sanitizeUpgradeMap(save && save.upgrades);
     const safeDepth = clamp(safeInteger(depth, 0), 0, getMaxAbyssDepth());
+    const depthPower = getDepthPower(safeDepth);
     const adaptation = clamp(safeInteger(upgrades.abyssAdaptation, 0), 0, 10);
     const damagePenaltyScale = clamp(1 - adaptation * 0.015, 0.75, 1);
 
     return {
       depth: safeDepth,
-      enemyHpMultiplier: clamp(1 + safeDepth * safeNumber(abyss.enemyHpPerDepth, 0.08), 1, safeNumber(abyss.maxEnemyHpMultiplier, 3)),
-      enemySpeedMultiplier: clamp(1 + safeDepth * safeNumber(abyss.enemySpeedPerDepth, 0.025), 1, safeNumber(abyss.maxEnemySpeedMultiplier, 1.6)),
-      enemyDamageMultiplier: clamp(1 + safeDepth * safeNumber(abyss.enemyDamagePerDepth, 0.05) * damagePenaltyScale, 1, safeNumber(abyss.maxEnemyDamageMultiplier, 2.5)),
-      bossHpMultiplier: clamp(1 + safeDepth * safeNumber(abyss.bossHpPerDepth, 0.1), 1, safeNumber(abyss.maxBossHpMultiplier, 3.5)),
-      eliteChanceBonus: clamp(safeDepth * safeNumber(abyss.eliteChancePerDepth, 0.006), 0, safeNumber(abyss.maxEliteChanceBonus, 0.15)),
-      rewardMultiplier: clamp(1 + safeDepth * safeNumber(abyss.rewardPerDepth, 0.08), 1, safeNumber(abyss.maxRewardMultiplier, 2.8))
+      depthPower: depthPower,
+      enemyHpMultiplier: clamp(1 + depthPower * safeNumber(abyss.enemyHpPerDepth, 0.08), 1, safeNumber(abyss.maxEnemyHpMultiplier, 4.2)),
+      enemySpeedMultiplier: clamp(1 + depthPower * safeNumber(abyss.enemySpeedPerDepth, 0.02), 1, safeNumber(abyss.maxEnemySpeedMultiplier, 1.6)),
+      enemyDamageMultiplier: clamp(1 + depthPower * safeNumber(abyss.enemyDamagePerDepth, 0.045) * damagePenaltyScale, 1, safeNumber(abyss.maxEnemyDamageMultiplier, 3)),
+      bossHpMultiplier: clamp(1 + depthPower * safeNumber(abyss.bossHpPerDepth, 0.1), 1, safeNumber(abyss.maxBossHpMultiplier, 5)),
+      eliteChanceBonus: clamp(depthPower * safeNumber(abyss.eliteChancePerDepth, 0.005), 0, safeNumber(abyss.maxEliteChanceBonus, 0.18)),
+      rewardMultiplier: clamp(1 + depthPower * safeNumber(abyss.rewardPerDepth, 0.06), 1, safeNumber(abyss.maxRewardMultiplier, 3.5))
     };
+  }
+
+  function getDepthPower(depth) {
+    const safeDepth = clamp(safeInteger(depth, 0), 0, getMaxAbyssDepth());
+
+    if (safeDepth <= 5) {
+      return safeDepth;
+    }
+    if (safeDepth <= 10) {
+      return 5 + (safeDepth - 5) * 1.35;
+    }
+    if (safeDepth <= 15) {
+      return 11.75 + (safeDepth - 10) * 1.65;
+    }
+    return 20 + (safeDepth - 15) * 2;
+  }
+
+  function getDifficultyRating(save) {
+    const source = save || {};
+    const depth = clamp(safeInteger(source.abyss && source.abyss.selectedDepth, 0), 0, getMaxAbyssDepth());
+    const zoneId = source.selectedZoneId || "riftGate";
+    const eventId = source.selectedEventId || "normal";
+    const challengeId = source.selectedChallengeId || "normal";
+    const zoneBonusMap = {
+      riftGate: 0,
+      swampEdge: 0.35,
+      abyssCore: 0.55,
+      brokenSanctum: 0.8,
+      deadCorridor: 0.8,
+      stormRift: 0.7
+    };
+    const eventBonusMap = {
+      normal: 0,
+      gemStorm: 0.25,
+      abyssSurge: 0.55,
+      bloodNight: 0.7,
+      silentBattlefield: 0.85,
+      glassContract: 1
+    };
+    const challengeBonusMap = {
+      normal: 0,
+      hungryAbyss: 0.35,
+      fastErosion: 0.4,
+      glassSurvivor: 0.55
+    };
+    const depthScore = getDepthPower(depth) * 0.34;
+    const rating = 1 + depthScore + safeNumber(zoneBonusMap[zoneId], 0) + safeNumber(eventBonusMap[eventId], 0) + safeNumber(challengeBonusMap[challengeId], 0);
+
+    return clamp(rating, 1, 10);
   }
 
   function hasClearDepth(save, depth) {
@@ -627,7 +678,7 @@
     const pool = [
       createMission("killCount", "적 80마리 처치", 80 + selectedDepth * 5, 10 + depthReward),
       createMission("eliteKills", "정예 적 처치", 2 + Math.floor(selectedDepth / 5), 14 + depthReward),
-      createMission("surviveTime", "150초 생존", 150, 12 + depthReward),
+      createMission("surviveTime", "240초 생존", 240, 12 + depthReward),
       createMission("bossKill", "보스 처치", 1, 15 + depthReward),
       createMission("relicCount", "유물 2개 획득", 2, 12 + depthReward),
       createMission("levelReach", "레벨 7 달성", 7, 14 + depthReward)
@@ -751,6 +802,8 @@
       selectedEventName: event.name || "일반",
       selectedDepth: selectedDepth,
       abyssModifiers: abyssModifiers,
+      difficultyRating: getDifficultyRating(save),
+      combinedDifficulty: getDifficultyRating(save),
       weaponMasteryLevel: getMasteryLevel(save, "weapons", save.selectedWeaponId),
       runDuration: runDuration,
       bossSpawnTime: bossSpawnTime,
@@ -1338,6 +1391,14 @@
 
     getAbyssModifiers: function (depth) {
       return getAbyssModifiers(depth, this.getSave());
+    },
+
+    getDifficultyRating: function (save) {
+      return getDifficultyRating(save || this.getSave());
+    },
+
+    getCombinedDifficulty: function (save) {
+      return getDifficultyRating(save || this.getSave());
     },
 
     getSelectedEvent: function () {
