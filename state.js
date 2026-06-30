@@ -666,7 +666,7 @@
     const upgrades = sanitizeUpgradeMap(save.upgrades);
     const maxHp = Math.max(1, (safeNumber(source.maxHp, fallbackPlayer.maxHp) * safeNumber(selectedClass.maxHpMultiplier, 1) + upgrades.vitality * 5 + (classMasteryLevel >= 3 ? 3 : 0)) * safeNumber(modifiers.playerMaxHpMultiplier, 1));
     const speed = safeNumber(source.speed, fallbackPlayer.speed) * safeNumber(selectedClass.speedMultiplier, 1);
-    const damage = (safeNumber(source.damage, fallbackPlayer.damage) * safeNumber(selectedClass.damageMultiplier, 1) + upgrades.power + (classMasteryLevel >= 5 ? 1 : 0)) * safeNumber(modifiers.playerDamageMultiplier, 1);
+    const damage = (safeNumber(source.damage, fallbackPlayer.damage) * safeNumber(selectedClass.damageMultiplier, 1) + upgrades.power * 0.6 + (classMasteryLevel >= 5 ? 1 : 0)) * safeNumber(modifiers.playerDamageMultiplier, 1);
     const attackCooldown = safeNumber(source.attackCooldown, fallbackPlayer.attackCooldown) * safeNumber(selectedClass.attackCooldownMultiplier, 1);
     const pickupRadius = safeNumber(source.pickupRadius, fallbackPlayer.pickupRadius) + safeNumber(selectedClass.pickupRadiusBonus, 0) + upgrades.growth * 3 + (classMasteryLevel >= 7 ? 3 : 0);
     const worldWidth = Math.max(safeNumber(game.width, 360), safeNumber(game.worldWidth, safeNumber(game.width, 360)));
@@ -776,6 +776,8 @@
       pendingAbilities: [],
       abilityLevels: {},
       weaponGrowth: {},
+      supportWeapons: [],
+      damageStats: {},
       evolutions: {
         piercingShot: false,
         splitShot: false,
