@@ -33,8 +33,6 @@
         return;
       }
 
-      this.initialized = true;
-
       if (!hasModules()) {
         return;
       }
@@ -44,6 +42,7 @@
         return;
       }
 
+      this.initialized = true;
       AS.Render.init(canvas);
       AS.State.getRun();
       AS.UI.init();
@@ -69,7 +68,7 @@
 
         self.lastTime = timestamp;
 
-        if (run && run.mode === AS.Data.states.running) {
+        if (run && AS.Data && AS.Data.states && run.mode === AS.Data.states.running) {
           AS.Game.update(run, delta);
         }
 
@@ -93,4 +92,14 @@
   window.addEventListener("DOMContentLoaded", function () {
     AS.Main.init();
   });
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("./service-worker.js").catch(function (error) {
+        if (window.console && typeof window.console.warn === "function") {
+          window.console.warn("Service worker registration failed:", error);
+        }
+      });
+    });
+  }
 })();
