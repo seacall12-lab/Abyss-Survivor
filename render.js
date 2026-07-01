@@ -51,6 +51,9 @@
     if (zoneId === "stormRift") {
       return { base: "#090d18", grid: "rgba(143, 216, 255, 0.1)", glow: "rgba(165, 110, 255, 0.09)", accent: "rgba(255, 226, 138, 0.06)" };
     }
+    if (zoneId === "abyssThrone") {
+      return { base: "#0d0815", grid: "rgba(190, 120, 255, 0.1)", glow: "rgba(159, 108, 255, 0.1)", accent: "rgba(255, 216, 120, 0.06)" };
+    }
 
     return { base: "#071019", grid: "rgba(126, 204, 222, 0.08)", glow: "rgba(73, 224, 184, 0.07)", accent: "rgba(213, 239, 115, 0.05)" };
   }
