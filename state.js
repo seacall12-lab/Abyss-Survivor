@@ -52,7 +52,7 @@
 
   function createDefaultSave() {
     return {
-      version: 7,
+      version: 9,
       bestTime: 0,
       bestKills: 0,
       totalRuns: 0,
@@ -117,6 +117,16 @@
         completed: {},
         progress: {},
         runHistory: {}
+      },
+      endgame: {
+        firstClearRewards: {},
+        finalBossKills: 0,
+        variantBossKills: 0,
+        highestEndgameDepth: 0
+      },
+      settings: {
+        reducedEffects: false,
+        showDamageNumbers: true
       }
     };
   }
@@ -327,6 +337,36 @@
     };
   }
 
+  function sanitizeEndgameMap(endgame) {
+    const source = endgame && typeof endgame === "object" ? endgame : {};
+    const firstClearSource = source.firstClearRewards && typeof source.firstClearRewards === "object" ? source.firstClearRewards : {};
+    const firstClearRewards = {};
+    const maxDepth = getMaxAbyssDepth();
+    let key;
+
+    for (key in firstClearSource) {
+      if (Object.prototype.hasOwnProperty.call(firstClearSource, key) && firstClearSource[key]) {
+        firstClearRewards[String(clamp(safeInteger(key, 0), 0, maxDepth))] = true;
+      }
+    }
+
+    return {
+      firstClearRewards: firstClearRewards,
+      finalBossKills: safeInteger(source.finalBossKills, 0),
+      variantBossKills: safeInteger(source.variantBossKills, 0),
+      highestEndgameDepth: clamp(safeInteger(source.highestEndgameDepth, 0), 0, maxDepth)
+    };
+  }
+
+  function sanitizeSettingsMap(settings) {
+    const source = settings && typeof settings === "object" ? settings : {};
+
+    return {
+      reducedEffects: !!source.reducedEffects,
+      showDamageNumbers: source.showDamageNumbers !== false
+    };
+  }
+
   function sanitizeSave(save) {
     const base = createDefaultSave();
     const source = save && typeof save === "object" ? save : {};
@@ -348,7 +388,9 @@
       mastery: sanitizeMasteryMap(source.mastery),
       unlocks: sanitizeUnlockMap(source.unlocks, source),
       stats: sanitizeStatsMap(source.stats),
-      missions: sanitizeMissionMap(source.missions)
+      missions: sanitizeMissionMap(source.missions),
+      endgame: sanitizeEndgameMap(source.endgame),
+      settings: sanitizeSettingsMap(source.settings)
     };
 
     checkUnlocks(result);
@@ -487,7 +529,8 @@
       abyssCore: 0.55,
       brokenSanctum: 0.8,
       deadCorridor: 0.8,
-      stormRift: 0.7
+      stormRift: 0.7,
+      abyssThrone: 1.2
     };
     const eventBonusMap = {
       normal: 0,
@@ -542,6 +585,9 @@
     if (category === "zones" && id === "stormRift") {
       return "심연 4단계 클리어";
     }
+    if (category === "zones" && id === "abyssThrone") {
+      return "심연 10단계 클리어 또는 심연 15단계 도달";
+    }
     if (category === "features" && id === "advancedUpgrades") {
       return "심연 0단계 클리어";
     }
@@ -583,6 +629,9 @@
     if (category === "zones" && id === "stormRift") {
       return hasClearDepth(save, 4);
     }
+    if (category === "zones" && id === "abyssThrone") {
+      return hasClearDepth(save, 10) || safeInteger(save && save.abyss && save.abyss.maxUnlockedDepth, 0) >= 15;
+    }
     if (category === "features" && id === "advancedUpgrades") {
       return hasClearDepth(save, 0) || totalClears >= 1;
     }
@@ -596,7 +645,7 @@
     const targets = {
       classes: ["bloodSeeker", "engineer", "abyssApostle"],
       weapons: ["bloodScythe", "riftSpear", "starDust"],
-      zones: ["brokenSanctum", "deadCorridor", "stormRift"],
+      zones: ["brokenSanctum", "deadCorridor", "stormRift", "abyssThrone"],
       features: ["advancedUpgrades"]
     };
     let category;
@@ -868,6 +917,24 @@
       relicChoices: [],
       relicOfferCount: 0,
       buildBonuses: [],
+      mapChoiceTimes: isBossRush ? [] : getMapChoiceTimes(runDuration, bossSpawnTime),
+      mapChoiceIndex: 0,
+      mapChoicesTriggered: {},
+      mapRoomChoices: [],
+      pathHistory: [],
+      activeRoomModifiers: {},
+      currentMapRoom: null,
+      pathRewardMultiplier: 1,
+      activeBossVariantModifiers: {},
+      bossVariantId: "",
+      bossVariantName: "",
+      variantBossDefeated: false,
+      finalBossEncountered: false,
+      finalBossDefeated: false,
+      endgameShardReward: 0,
+      firstClearRewardDepth: 0,
+      firstClearReward: 0,
+      endgameRewardsGranted: false,
 
       player: player,
       input: {
@@ -918,6 +985,24 @@
     }
 
     return count;
+  }
+
+  function getMapChoiceTimes(runDuration, bossSpawnTime) {
+    const duration = Math.max(1, safeNumber(runDuration, safeNumber((Data.game || {}).runDuration, 180)));
+    const bossTime = Math.max(0, safeNumber(bossSpawnTime, safeNumber((Data.game || {}).bossSpawnTime, duration * 0.7)));
+    const collisionWindow = Math.max(0, safeNumber((Data.map || {}).bossCollisionWindow, 8));
+    const points = [0.25, 0.5, 0.75];
+    const result = [];
+
+    for (let i = 0; i < points.length; i += 1) {
+      let time = clamp(duration * points[i], 8, Math.max(8, duration - 8));
+      if (Math.abs(time - bossTime) <= collisionWindow) {
+        time = time <= bossTime ? Math.max(8, bossTime - collisionWindow - 1) : Math.min(duration - 8, bossTime + collisionWindow + 1);
+      }
+      result.push(Math.max(1, Math.round(time)));
+    }
+
+    return result;
   }
 
   function getRunMissionValue(run, mission) {
@@ -1094,6 +1179,51 @@
     run.selectedDepth = selectedDepth;
   }
 
+  function grantEndgameRewards(save, run, isClear) {
+    const endgame = sanitizeEndgameMap(save.endgame);
+    const selectedDepth = clamp(safeInteger(run.selectedDepth, 0), 0, getMaxAbyssDepth());
+    const rewards = Array.isArray(Data.endgame && Data.endgame.firstClearRewards) ? Data.endgame.firstClearRewards : [];
+    let reward = 0;
+
+    if (run.endgameRewardsGranted) {
+      return 0;
+    }
+
+    run.endgameRewardsGranted = true;
+    run.endgameShardReward = 0;
+    run.firstClearRewardDepth = 0;
+    run.firstClearReward = 0;
+
+    if (selectedDepth >= safeInteger((Data.endgame || {}).highDepth, 10)) {
+      endgame.highestEndgameDepth = Math.max(safeInteger(endgame.highestEndgameDepth, 0), selectedDepth);
+    }
+
+    if (run.finalBossDefeated) {
+      endgame.finalBossKills = safeInteger(endgame.finalBossKills, 0) + 1;
+    }
+    if (run.variantBossDefeated) {
+      endgame.variantBossKills = safeInteger(endgame.variantBossKills, 0) + 1;
+    }
+
+    if (isClear && !hasClearDepth(save, selectedDepth) && !endgame.firstClearRewards[String(selectedDepth)]) {
+      for (let i = 0; i < rewards.length; i += 1) {
+        if (safeInteger(rewards[i] && rewards[i].depth, 0) === selectedDepth) {
+          reward = Math.max(0, safeInteger(rewards[i].reward, 0));
+          break;
+        }
+      }
+      if (reward > 0) {
+        endgame.firstClearRewards[String(selectedDepth)] = true;
+        run.firstClearRewardDepth = selectedDepth;
+        run.firstClearReward = reward;
+        run.endgameShardReward = reward;
+      }
+    }
+
+    save.endgame = sanitizeEndgameMap(endgame);
+    return reward;
+  }
+
   AS.State = {
     current: null,
     save: null,
@@ -1211,8 +1341,10 @@
       const clearReward = isClear ? 20 : 0;
       const bossKillReward = run.bossDefeated ? 10 : 0;
       const baseShardReward = Math.max(0, safeInteger(killReward + timeReward + clearReward + bossKillReward, 0));
-      const shardReward = Math.max(0, Math.floor(baseShardReward * Math.max(0, safeNumber(run.rewardMultiplier, 1))));
+      const pathRewardMultiplier = clamp(safeNumber(run.pathRewardMultiplier, 1), 0.1, safeNumber((Data.map || {}).rewardMultiplierMax, 1.6));
+      const shardReward = Math.max(0, Math.floor(baseShardReward * Math.max(0, safeNumber(run.rewardMultiplier, 1)) * pathRewardMultiplier));
       let missionReward = 0;
+      let endgameReward = 0;
 
       if (run.rewardGranted) {
         return save;
@@ -1224,9 +1356,10 @@
       run.shardReward = shardReward;
       run.bossKillReward = bossKillReward;
       missionReward = applyMissionRewards(save, run);
+      endgameReward = grantEndgameRewards(save, run, isClear);
       save.bestTime = Math.max(safeNumber(save.bestTime, 0), runTime);
       save.bestKills = Math.max(safeInteger(save.bestKills, 0), runKills);
-      save.shards = safeInteger(save.shards, 0) + shardReward + missionReward;
+      save.shards = safeInteger(save.shards, 0) + shardReward + missionReward + endgameReward;
       updateRunStats(save, run, isClear);
       updateAbyssProgress(save, run, isClear);
       grantMastery(save, run, isClear);
@@ -1362,7 +1495,7 @@
       const groups = [
         { category: "classes", ids: ["bloodSeeker", "engineer", "abyssApostle"], label: "클래스" },
         { category: "weapons", ids: ["bloodScythe", "riftSpear", "starDust"], label: "무기" },
-        { category: "zones", ids: ["brokenSanctum", "deadCorridor", "stormRift"], label: "구역" },
+        { category: "zones", ids: ["brokenSanctum", "deadCorridor", "stormRift", "abyssThrone"], label: "구역" },
         { category: "features", ids: ["advancedUpgrades"], label: "기능" }
       ];
 
