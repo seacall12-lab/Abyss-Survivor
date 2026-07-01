@@ -3,14 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#111827">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Abyss">
   <title>Abyss Survivor</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div id="app" class="app-shell">
     <header class="hud" aria-label="게임 상태">
       <div class="hud-item">
-        <span class="hud-label">♥</span>
+        <span class="hud-label">HP</span>
         <span id="healthText" class="hud-value">100 / 100</span>
       </div>
       <div class="hud-item">
@@ -18,18 +24,18 @@
         <span id="levelText" class="hud-value">1</span>
       </div>
       <div class="hud-item hud-exp">
-        <span class="hud-label">◆</span>
+        <span class="hud-label">EXP</span>
         <span id="expText" class="hud-value">0 / 10</span>
         <div class="exp-bar" aria-hidden="true">
           <div id="expFill" class="exp-fill"></div>
         </div>
       </div>
       <div class="hud-item">
-        <span class="hud-label">⏱</span>
-        <span id="timeText" class="hud-value">03:00</span>
+        <span class="hud-label">시간</span>
+        <span id="timeText" class="hud-value">05:00</span>
       </div>
       <div class="hud-item">
-        <span class="hud-label">☠</span>
+        <span class="hud-label">처치</span>
         <span id="killText" class="hud-value">0</span>
       </div>
     </header>
@@ -40,8 +46,8 @@
       <section id="overlay" class="overlay is-visible" aria-live="polite">
         <div id="startPanel" class="overlay-panel">
           <h1>Abyss Survivor</h1>
-          <p>3분 생존 · 보스 처치</p>
-          <button id="startButton" class="primary-button" type="button">▶ 시작</button>
+          <p>5분 생존, 보스 처치, 최종 웨이브</p>
+          <button id="startButton" class="primary-button" type="button">시작</button>
         </div>
 
         <div id="levelUpPanel" class="overlay-panel is-hidden">
@@ -75,7 +81,7 @@
           <dl class="result-list">
             <div>
               <dt>⏱</dt>
-              <dd id="clearTimeText">03:00</dd>
+              <dd id="clearTimeText">05:00</dd>
             </div>
             <div>
               <dt>☠</dt>
@@ -93,7 +99,7 @@
     </main>
 
     <footer class="control-bar" aria-label="게임 조작">
-      <button id="pauseButton" class="control-button" type="button" aria-label="일시정지">Ⅱ</button>
+      <button id="pauseButton" class="control-button" type="button" aria-label="일시정지">⏸</button>
       <button id="restartButton" class="control-button" type="button" aria-label="재시작">↻</button>
     </footer>
   </div>
