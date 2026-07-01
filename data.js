@@ -40,6 +40,7 @@
       title: "title",
       running: "running",
       paused: "paused",
+      mapChoice: "mapChoice",
       levelup: "levelup",
       gameover: "gameover",
       clear: "clear"
@@ -292,6 +293,111 @@
       offerChance: 0.3
     },
 
+    mapRooms: [
+      {
+        id: "combat",
+        name: "전투방",
+        shortName: "전투",
+        icon: "⚔",
+        rarity: "common",
+        description: "기본 전투가 이어집니다.",
+        risk: 1,
+        rewardMultiplier: 1,
+        modifiers: {
+          spawnIntervalMultiplier: 1,
+          enemyHpMultiplier: 1,
+          enemyDamageMultiplier: 1,
+          enemySpeedMultiplier: 1,
+          eliteChanceBonus: 0,
+          maxEnemiesBonus: 0
+        }
+      },
+      {
+        id: "elite",
+        name: "엘리트방",
+        shortName: "엘리트",
+        icon: "◆",
+        rarity: "rare",
+        description: "정예 적이 더 자주 등장하지만 보상이 증가합니다.",
+        risk: 3,
+        rewardMultiplier: 1.2,
+        rewardHint: "정예와 보상 증가",
+        modifiers: {
+          spawnIntervalMultiplier: 0.94,
+          enemyHpMultiplier: 1.06,
+          enemyDamageMultiplier: 1,
+          enemySpeedMultiplier: 1,
+          eliteChanceBonus: 0.04,
+          maxEnemiesBonus: 6
+        }
+      },
+      {
+        id: "relic",
+        name: "유물방",
+        shortName: "유물",
+        icon: "◆",
+        rarity: "rare",
+        description: "즉시 유물 선택 기회를 얻습니다.",
+        risk: 1,
+        rewardMultiplier: 0.95,
+        immediateEffect: "relicChoice",
+        modifiers: {
+          spawnIntervalMultiplier: 1,
+          enemyHpMultiplier: 1,
+          enemyDamageMultiplier: 1,
+          enemySpeedMultiplier: 1,
+          eliteChanceBonus: 0,
+          maxEnemiesBonus: 0
+        }
+      },
+      {
+        id: "heal",
+        name: "회복방",
+        shortName: "회복",
+        icon: "✚",
+        rarity: "common",
+        description: "체력을 회복하고 다음 구간을 안정적으로 진행합니다.",
+        risk: 0,
+        rewardMultiplier: 0.85,
+        immediateEffect: "heal",
+        healRatio: 0.35,
+        modifiers: {
+          spawnIntervalMultiplier: 1.04,
+          enemyHpMultiplier: 0.98,
+          enemyDamageMultiplier: 0.96,
+          enemySpeedMultiplier: 1,
+          eliteChanceBonus: 0,
+          maxEnemiesBonus: 0
+        }
+      },
+      {
+        id: "support",
+        name: "보조무기방",
+        shortName: "보조",
+        icon: "✦",
+        rarity: "rare",
+        description: "보조무기를 획득하거나 강화합니다.",
+        risk: 1,
+        rewardMultiplier: 0.95,
+        immediateEffect: "supportChoice",
+        modifiers: {
+          spawnIntervalMultiplier: 1,
+          enemyHpMultiplier: 1,
+          enemyDamageMultiplier: 1,
+          enemySpeedMultiplier: 1,
+          eliteChanceBonus: 0,
+          maxEnemiesBonus: 0
+        }
+      }
+    ],
+
+    map: {
+      maxChoices: 3,
+      choicesPerOffer: 3,
+      rewardMultiplierMax: 1.6,
+      bossCollisionWindow: 8
+    },
+
     classes: [
       {
         id: "wanderer",
@@ -507,6 +613,24 @@
         rewardMultiplier: 1.15,
         bossId: "stormDevourer",
         backgroundTone: "storm"
+      },
+      {
+        id: "abyssThrone",
+        name: "심연 왕좌",
+        shortName: "왕좌",
+        icon: "♛",
+        description: "심연 15단계 이상에서 도전하는 엔드게임 구역입니다.",
+        difficulty: 9,
+        rarity: "legendary",
+        enemyHpMultiplier: 1.28,
+        enemySpeedMultiplier: 1.08,
+        enemyDamageMultiplier: 1.22,
+        eliteChanceBonus: 0.06,
+        maxEnemiesBonus: 14,
+        rewardMultiplier: 1.35,
+        bossId: "abyssSovereign",
+        backgroundTone: "throne",
+        unlockDepth: 15
       }
     ],
 
@@ -594,7 +718,78 @@
         auraRadius: 88,
         patterns: ["charge", "stormAura"],
         phase2HpRatio: 0.5
+      },
+      abyssSovereign: {
+        id: "abyssSovereign",
+        name: "심연 군주",
+        icon: "♛",
+        hp: 2400,
+        speed: 30,
+        damage: 28,
+        radius: 42,
+        exp: 0,
+        score: 120,
+        rarity: "legendary",
+        color: "#9f6cff",
+        auraRadius: 96,
+        patterns: ["charge", "shockwave", "summon"],
+        phase2HpRatio: 0.55,
+        phase3HpRatio: 0.25
       }
+    },
+
+    bossVariants: [
+      {
+        id: "bloodVariant",
+        name: "붉은 변종",
+        icon: "◆",
+        rarity: "epic",
+        hpMultiplier: 1.18,
+        damageMultiplier: 1.15,
+        speedMultiplier: 1.02,
+        auraDamageBonus: 0.12,
+        rewardMultiplier: 1.12
+      },
+      {
+        id: "voidVariant",
+        name: "공허 변종",
+        icon: "✹",
+        rarity: "epic",
+        hpMultiplier: 1.12,
+        damageMultiplier: 1.08,
+        speedMultiplier: 1,
+        summonIntervalMultiplier: 0.82,
+        eliteChanceBonus: 0.03,
+        rewardMultiplier: 1.15
+      },
+      {
+        id: "stormVariant",
+        name: "폭풍 변종",
+        icon: "↯",
+        rarity: "epic",
+        hpMultiplier: 1.08,
+        damageMultiplier: 1.1,
+        speedMultiplier: 1.15,
+        chargeCooldownMultiplier: 0.82,
+        rewardMultiplier: 1.14
+      }
+    ],
+
+    endgame: {
+      highDepth: 10,
+      finalZoneDepth: 15,
+      firstClearRewards: [
+        { depth: 10, reward: 80 },
+        { depth: 15, reward: 150 },
+        { depth: 20, reward: 300 }
+      ],
+      variantChances: [
+        { minDepth: 20, chance: 0.6 },
+        { minDepth: 15, chance: 0.45 },
+        { minDepth: 10, chance: 0.25 }
+      ],
+      finalBossDepth20HpMultiplier: 1.22,
+      finalBossDepth20DamageMultiplier: 1.14
     },
 
     waves: [
@@ -1028,6 +1223,86 @@
           maxHp: 22,
           pickupRadius: 16,
           shardRewardMultiplier: 1.1
+        }
+      },
+      {
+        id: "abyssCrown",
+        name: "심연의 왕관",
+        icon: "♛",
+        tags: ["abyss", "damage", "risk", "endgame"],
+        rarity: "legendary",
+        minDepth: 10,
+        description: "모든 피해가 증가하지만 받는 피해도 증가합니다.",
+        effect: {
+          damage: 10,
+          damageTakenMultiplier: 1.08
+        }
+      },
+      {
+        id: "riftHeart",
+        name: "균열 심장",
+        icon: "◆",
+        tags: ["support", "cooldown", "abyss", "endgame"],
+        rarity: "legendary",
+        minDepth: 10,
+        description: "보조무기 피해와 쿨타임을 강화합니다.",
+        effect: {
+          supportDamageMultiplier: 1.18,
+          supportCooldownMultiplier: 0.92
+        }
+      },
+      {
+        id: "lastMark",
+        name: "최후의 표식",
+        icon: "☠",
+        tags: ["boss", "elite", "damage", "endgame"],
+        rarity: "epic",
+        minDepth: 10,
+        description: "보스와 정예에게 주는 피해가 증가합니다.",
+        effect: {
+          bossDamageMultiplier: 1.16,
+          eliteDamageMultiplier: 1.12
+        }
+      },
+      {
+        id: "stormSeal",
+        name: "폭풍 인장",
+        icon: "↯",
+        tags: ["speed", "cooldown", "risk", "endgame"],
+        rarity: "epic",
+        minDepth: 12,
+        description: "이동 속도와 공격 속도가 증가하지만 최대 체력이 감소합니다.",
+        effect: {
+          speed: 10,
+          attackCooldownMultiplier: 0.94,
+          maxHpMultiplier: 0.92
+        }
+      },
+      {
+        id: "abyssBarrier",
+        name: "심연 방벽",
+        icon: "▣",
+        tags: ["shield", "survival", "abyss", "endgame"],
+        rarity: "epic",
+        minDepth: 12,
+        description: "받는 피해와 접촉 피해를 조금 줄입니다.",
+        effect: {
+          damageReductionMultiplier: 0.94,
+          contactDamageMultiplier: 0.9
+        }
+      },
+      {
+        id: "voidAmplifier",
+        name: "공허 증폭기",
+        icon: "✹",
+        tags: ["area", "explosion", "wave", "endgame"],
+        rarity: "legendary",
+        minDepth: 15,
+        description: "범위와 폭발 계열 공격이 강화됩니다.",
+        effect: {
+          areaMultiplier: 1.14,
+          explosionMultiplier: 1.18,
+          waveMultiplier: 1.12
         }
       }
     ],
@@ -1513,4 +1788,121 @@
       spawnWeightTotal: 100
     }
   };
+
+  function hasIcon(item) {
+    return !!(item && typeof item.icon === "string" && item.icon.trim());
+  }
+
+  function iconByTags(item) {
+    const tags = Array.isArray(item && item.tags) ? item.tags : [];
+
+    if (tags.indexOf("boss") >= 0) {
+      return "☠";
+    }
+    if (tags.indexOf("endgame") >= 0 || tags.indexOf("abyss") >= 0) {
+      return "✹";
+    }
+    if (tags.indexOf("blood") >= 0 || tags.indexOf("hp") >= 0 || tags.indexOf("survival") >= 0 || tags.indexOf("shield") >= 0) {
+      return "✚";
+    }
+    if (tags.indexOf("lightning") >= 0 || tags.indexOf("speed") >= 0 || tags.indexOf("cooldown") >= 0) {
+      return "↯";
+    }
+    if (tags.indexOf("projectile") >= 0 || tags.indexOf("pierce") >= 0 || tags.indexOf("bullet") >= 0) {
+      return "➤";
+    }
+    if (tags.indexOf("area") >= 0 || tags.indexOf("wave") >= 0 || tags.indexOf("explosion") >= 0) {
+      return "◎";
+    }
+    if (tags.indexOf("support") >= 0 || tags.indexOf("install") >= 0) {
+      return "✦";
+    }
+    if (tags.indexOf("damage") >= 0 || tags.indexOf("melee") >= 0) {
+      return "⚔";
+    }
+    if (tags.indexOf("growth") >= 0 || tags.indexOf("exp") >= 0 || tags.indexOf("pickup") >= 0) {
+      return "◈";
+    }
+
+    return "";
+  }
+
+  function ensureIcon(item, fallback) {
+    if (!item || typeof item !== "object" || hasIcon(item)) {
+      return;
+    }
+
+    item.icon = iconByTags(item) || fallback || "◆";
+  }
+
+  function ensureArrayIcons(items, fallback, fallbackById) {
+    const list = Array.isArray(items) ? items : [];
+
+    for (let i = 0; i < list.length; i += 1) {
+      const item = list[i];
+      const idFallback = fallbackById && item ? fallbackById[item.id] : "";
+      ensureIcon(item, idFallback || fallback);
+    }
+  }
+
+  function ensureObjectIcons(items, fallback, fallbackById) {
+    const source = items && typeof items === "object" ? items : {};
+    let key;
+
+    for (key in source) {
+      if (Object.prototype.hasOwnProperty.call(source, key)) {
+        const item = source[key];
+        const idFallback = fallbackById && item ? fallbackById[item.id || key] : "";
+        ensureIcon(item, idFallback || fallback);
+      }
+    }
+  }
+
+  ensureArrayIcons(AS.Data.classes, "◆", {
+    wanderer: "◆",
+    guardian: "⬟",
+    chaser: "➤",
+    bloodSeeker: "✚",
+    engineer: "⚙",
+    abyssApostle: "✹"
+  });
+  ensureArrayIcons(AS.Data.weapons, "⚔");
+  ensureArrayIcons(AS.Data.supportWeapons, "✦");
+  ensureArrayIcons(AS.Data.zones, "▣", {
+    riftGate: "▣",
+    swampEdge: "≋",
+    abyssCore: "✹",
+    abyssThrone: "♛"
+  });
+  ensureArrayIcons(AS.Data.challenges, "◈", {
+    normal: "○",
+    hungryAbyss: "✹",
+    glassSurvivor: "△",
+    fastErosion: "↯"
+  });
+  ensureArrayIcons(AS.Data.runModes, "◈");
+  ensureArrayIcons(AS.Data.events, "◈");
+  ensureArrayIcons(AS.Data.mapRooms, "⬢");
+  ensureArrayIcons(AS.Data.relics, "◆");
+  ensureArrayIcons(AS.Data.abilities, "◆", {
+    damageUp: "⚔",
+    attackSpeedUp: "↯",
+    projectileSpeedUp: "➤",
+    projectileSizeUp: "●",
+    maxHpUp: "✚",
+    heal: "✚",
+    moveSpeedUp: "➤",
+    pickupRangeUp: "◈"
+  });
+  ensureObjectIcons(AS.Data.bosses, "☠", {
+    abyssSovereign: "♛"
+  });
+  ensureObjectIcons(AS.Data.enemies, "⚔", {
+    boss: "☠"
+  });
+  ensureArrayIcons(AS.Data.bossVariants, "☠");
+  ensureArrayIcons(AS.Data.endgame && AS.Data.endgame.firstClearRewards, "◈");
+  if (AS.Data.endgame && typeof AS.Data.endgame === "object" && !hasIcon(AS.Data.endgame)) {
+    AS.Data.endgame.icon = "♛";
+  }
 })();
