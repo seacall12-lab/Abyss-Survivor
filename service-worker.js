@@ -1,4 +1,4 @@
-const CACHE_NAME = "abyss-survivor-v10.0.0";
+const CACHE_NAME = "abyss-survivor-v10.0.2";
 const ASSETS = [
   "./",
   "./index.html",
@@ -10,11 +10,11 @@ const ASSETS = [
   "./ui.js",
   "./main.js",
   "./manifest.json",
-  "./icons/icon-192.png",
-  "./icons/icon-512.png"
+  "./icons/icon.svg"
 ];
 
 self.addEventListener("install", function (event) {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then(function (cache) {
       return cache.addAll(ASSETS).catch(function () {
@@ -29,7 +29,9 @@ self.addEventListener("activate", function (event) {
     caches.keys().then(function (names) {
       return Promise.all(names.map(function (name) {
         return name === CACHE_NAME ? undefined : caches.delete(name);
-      }));
+      })).then(function () {
+        return self.clients.claim();
+      });
     })
   );
 });
