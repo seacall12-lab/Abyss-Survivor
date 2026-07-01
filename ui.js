@@ -49,12 +49,44 @@
     const rows = AS.Game && AS.Game.getDamageRanking ? AS.Game.getDamageRanking(run, 5) : [];
 
     if (!rows.length) {
-      return "공격별 피해: 기록 없음";
+      return "⚔ 공격별 피해: 기록 없음";
     }
 
-    return "공격별 피해: " + rows.map(function (row, index) {
+    return "⚔ 공격별 피해: " + rows.map(function (row, index) {
       return (index + 1) + ". " + row.name + " " + formatNumber(row.damage) + " / " + safeInteger(row.hits, 0) + "타 / DPS " + formatNumber(row.dps);
     }).join(" · ");
+  }
+
+  function formatPathHistory(run) {
+    const history = Array.isArray(run && run.pathHistory) ? run.pathHistory : [];
+
+    if (!history.length) {
+      return "⬢ 선택 경로: 없음";
+    }
+
+    return "⬢ 선택 경로: " + history.slice(0, 3).map(function (entry) {
+      return formatTime(entry.time) + " " + (entry.roomName || "전투방");
+    }).join(" → ");
+  }
+
+  function formatEndgameRecord(run, save) {
+    const endgame = save && save.endgame ? save.endgame : {};
+    const highestDepth = safeInteger(endgame.highestEndgameDepth, 0);
+    const finalKills = safeInteger(endgame.finalBossKills, 0);
+    const variantKills = safeInteger(endgame.variantBossKills, 0);
+    const firstReward = safeInteger(run && run.firstClearReward, 0);
+    const firstDepth = safeInteger(run && run.firstClearRewardDepth, 0);
+    const parts = [
+      "♛ 엔드게임: 최고 심연 " + highestDepth,
+      "♛ 최종 보스 " + (run && run.finalBossDefeated ? "처치" : "미처치") + " / 누적 " + finalKills,
+      "☠ 변종 보스 " + (run && run.variantBossDefeated ? (run.bossVariantName || "처치") : "미처치") + " / 누적 " + variantKills
+    ];
+
+    if (firstReward > 0) {
+      parts.push("◈ 심연 " + firstDepth + " 첫 클리어 +" + firstReward);
+    }
+
+    return parts.join(" · ");
   }
 
   function setText(element, value) {
@@ -206,6 +238,11 @@
       normal: "○",
       survival: "⏱",
       bossRush: "♛",
+      combat: "⚔",
+      elite: "◆",
+      relic: "◆",
+      heal: "✚",
+      support: "✦",
       hungryAbyss: "☄",
       glassSurvivor: "△",
       fastErosion: "»",
@@ -280,7 +317,23 @@
       blackWing: "➤",
       brokenShield: "⬟",
       voidHand: "◇",
-      abyssPact: "✦"
+      abyssPact: "✦",
+      abyssCrown: "♛",
+      riftHeart: "◆",
+      lastMark: "☠",
+      stormSeal: "↯",
+      abyssBarrier: "▣",
+      voidAmplifier: "✹",
+      watcher: "☠",
+      swampGuardian: "☠",
+      coreDevourer: "☠",
+      sanctumBreaker: "▣",
+      deadLord: "☠",
+      stormDevourer: "↯",
+      abyssSovereign: "♛",
+      bloodVariant: "☠",
+      voidVariant: "✹",
+      stormVariant: "↯"
     };
 
     if (icons[id]) {
@@ -290,17 +343,60 @@
     if (category === "relic") {
       return "◆";
     }
+    if (category === "boss" || category === "bossVariant") {
+      return "☠";
+    }
+    if (category === "finalBoss" || category === "endgame") {
+      return "♛";
+    }
+    if (category === "zone") {
+      return "▣";
+    }
+    if (category === "event") {
+      return "◈";
+    }
+    if (category === "mapRoom") {
+      return "⬢";
+    }
+    if (category === "support" || category === "supportUpgrade") {
+      return "✦";
+    }
     if (category === "evolution") {
       return "✦";
     }
+    if (category === "heal" || category === "hp") {
+      return "✚";
+    }
+    if (category === "attack" || category === "damage") {
+      return "⚔";
+    }
+    if (category === "speed" || category === "cooldown") {
+      return "↯";
+    }
+    if (category === "projectile") {
+      return "➤";
+    }
+    if (category === "area") {
+      return "◎";
+    }
 
-    return "•";
+    return "◆";
   }
 
-  function createIcon(text, className) {
+  function safeIcon(value, id, category) {
+    const icon = typeof value === "string" ? value.trim() : "";
+
+    if (icon && icon.length <= 4) {
+      return icon;
+    }
+
+    return iconFor(id, category);
+  }
+
+  function createIcon(text, className, fallbackId, category) {
     const icon = document.createElement("span");
     icon.className = className || "choice-icon";
-    icon.textContent = text || "•";
+    icon.textContent = safeIcon(text, fallbackId, category);
     return icon;
   }
 
@@ -434,7 +530,7 @@
     for (let i = 0; i < items.length; i += 1) {
       const item = items[i];
       const button = document.createElement("button");
-      const icon = createIcon(item.icon || iconFor(item.id));
+      const icon = createIcon(item.icon, "choice-icon", item.id, category);
       const body = document.createElement("span");
       const name = document.createElement("strong");
       const badge = createRarityBadge(item, category);
@@ -493,7 +589,7 @@
 
   function appendLobbySummaryButton(panel, iconText, label, summary, modalType) {
     const button = document.createElement("button");
-    const icon = createIcon(iconText, "menu-icon");
+    const icon = createIcon(iconText, "menu-icon", modalType, modalType);
     const body = document.createElement("span");
     const title = document.createElement("strong");
     const description = document.createElement("span");
@@ -590,7 +686,7 @@
     for (let depth = 0; depth <= maxDepth; depth += 1) {
       const modifiers = AS.State && AS.State.getAbyssModifiers ? AS.State.getAbyssModifiers(depth) : { rewardMultiplier: 1 };
       const button = document.createElement("button");
-      const icon = createIcon(depth === 0 ? "0" : "◆", "choice-icon");
+      const icon = createIcon(depth === 0 ? "0" : "◆", "choice-icon", "abyssDepth", "endgame");
       const body = document.createElement("span");
       const name = document.createElement("strong");
       const description = document.createElement("span");
@@ -633,7 +729,7 @@
     description.textContent = safeInteger(entry.level, 1) >= 10 ? "최대 숙련도" : "경험치 " + safeInteger(entry.exp, 0) + "/" + required;
     body.appendChild(title);
     body.appendChild(description);
-    row.appendChild(createIcon(item.icon || "⬢", "choice-icon"));
+    row.appendChild(createIcon(item.icon, "choice-icon", item.id, "mapRoom"));
     row.appendChild(body);
     panel.appendChild(row);
   }
@@ -671,7 +767,7 @@
       description.textContent = rows[i].unlocked ? "사용 가능" : rows[i].condition;
       body.appendChild(title);
       body.appendChild(description);
-      row.appendChild(createIcon(rows[i].unlocked ? "✓" : "◇", "choice-icon"));
+      row.appendChild(createIcon(rows[i].unlocked ? "✓" : "◇", "choice-icon", rows[i].id, "reward"));
       row.appendChild(body);
       list.appendChild(row);
     }
@@ -787,7 +883,7 @@
       const cost = AS.State && AS.State.getUpgradeCost ? AS.State.getUpgradeCost(item.id) : 10 + level * 8;
       const locked = item.advanced && AS.State && AS.State.isFeatureUnlocked ? !AS.State.isFeatureUnlocked(item.unlockFeature || "advancedUpgrades") : false;
       const button = document.createElement("button");
-      const icon = createIcon(iconFor(item.id));
+      const icon = createIcon(item.icon, "choice-icon", item.id, "upgrade");
       const body = document.createElement("span");
       const name = document.createElement("strong");
       const badge = createRarityBadge(item, "upgrade");
@@ -863,7 +959,7 @@
     for (let i = 0; i < missions.length; i += 1) {
       const mission = missions[i];
       const row = document.createElement("div");
-      const icon = createIcon(mission.completed ? "✓" : "◇", "choice-icon");
+      const icon = createIcon(mission.completed ? "✓" : "◇", "choice-icon", mission.id, "reward");
       const body = document.createElement("span");
       const name = document.createElement("strong");
       const description = document.createElement("span");
@@ -1149,6 +1245,7 @@
         overlay: findElement("overlay"),
         startPanel: findElement("startPanel"),
         levelUpPanel: findElement("abilityPanel", "levelUpPanel"),
+        mapChoicePanel: findElement("mapChoicePanel"),
         gameOverPanel: findElement("gameOverPanel"),
         clearPanel: findElement("clearPanel"),
         abilityList: findElement("abilityList"),
@@ -1170,6 +1267,25 @@
       elements.challengePanel = ensurePanel("challengePanel", "setup-panel");
       elements.upgradePanel = ensurePanel("upgradePanel", "setup-panel");
       elements.missionPanel = ensurePanel("missionPanel", "setup-panel");
+      if (!elements.mapChoicePanel && elements.overlay) {
+        elements.mapChoicePanel = document.createElement("div");
+        elements.mapChoicePanel.id = "mapChoicePanel";
+        elements.mapChoicePanel.className = "overlay-panel is-hidden";
+        elements.overlay.appendChild(elements.mapChoicePanel);
+      }
+      if (elements.mapChoicePanel && !document.getElementById("mapChoiceList")) {
+        const title = document.createElement("h2");
+        const description = document.createElement("p");
+        const list = document.createElement("div");
+        title.textContent = "다음 심연 경로 선택";
+        description.textContent = "다음 구간의 위험도와 보상을 선택하세요.";
+        list.id = "mapChoiceList";
+        list.className = "ability-list";
+        elements.mapChoicePanel.appendChild(title);
+        elements.mapChoicePanel.appendChild(description);
+        elements.mapChoicePanel.appendChild(list);
+      }
+      elements.mapChoiceList = findElement("mapChoiceList");
       elements.lobbySummaryPanel = ensurePanel("lobbySummaryPanel", "lobby-summary");
       ensureLobbyModal();
       elements.pauseRestartButton = ensurePanelButton(elements.startPanel, "pauseRestartButton", "재시작", "secondary-button");
@@ -1240,6 +1356,7 @@
       const overlaySignature = [
         mode,
         run && run.pendingAbilities ? run.pendingAbilities.map(function (item) { return item.id; }).join(",") : "",
+        run && run.mapRoomChoices ? run.mapRoomChoices.map(function (item) { return item.id; }).join(",") : "",
         run ? Math.floor(safeNumber(run.time, 0)) : 0,
         run ? safeInteger(run.kills, 0) : 0,
         run ? safeInteger(run.level, 1) : 1,
@@ -1260,6 +1377,7 @@
 
       setPanelVisible(elements.startPanel, mode === (states.title || "title") || mode === (states.paused || "paused"));
       setPanelVisible(elements.levelUpPanel, mode === (states.levelup || "levelup"));
+      setPanelVisible(elements.mapChoicePanel, mode === (states.mapChoice || "mapChoice"));
       setPanelVisible(elements.gameOverPanel, mode === (states.gameover || "gameover"));
       setPanelVisible(elements.clearPanel, mode === (states.clear || "clear"));
 
@@ -1302,6 +1420,8 @@
 
       if (mode === (states.levelup || "levelup")) {
         this.showLevelUp(run.pendingAbilities || []);
+      } else if (mode === (states.mapChoice || "mapChoice")) {
+        this.showMapChoice(run.mapRoomChoices || []);
       } else {
         lastAbilitySignature = "";
       }
@@ -1362,7 +1482,7 @@
       for (let i = 0; i < abilities.length; i += 1) {
         const ability = abilities[i];
         const button = document.createElement("button");
-        const icon = createIcon(iconFor(ability.supportId || ability.id, ability.category), "ability-icon");
+        const icon = createIcon(ability.icon, "ability-icon", ability.supportId || ability.id, ability.category);
         const body = document.createElement("span");
         const tag = document.createElement("em");
         const name = document.createElement("strong");
@@ -1394,6 +1514,53 @@
           }
         });
         elements.abilityList.appendChild(button);
+      }
+    },
+
+    showMapChoice: function (rooms) {
+      const list = elements.mapChoiceList || findElement("mapChoiceList");
+      const signature = rooms.map(function (room) {
+        return room.id;
+      }).join("|");
+
+      if (!list || signature === lastAbilitySignature) {
+        return;
+      }
+
+      lastAbilitySignature = signature;
+      list.innerHTML = "";
+
+      for (let i = 0; i < rooms.length; i += 1) {
+        const room = rooms[i];
+        const button = document.createElement("button");
+        const icon = createIcon(room.icon, "ability-icon", room.id, "mapRoom");
+        const body = document.createElement("span");
+        const tag = document.createElement("em");
+        const name = document.createElement("strong");
+        const description = document.createElement("span");
+
+        button.className = "ability-button";
+        button.type = "button";
+        button.dataset.roomId = room.id;
+        applyRarityStyle(button, room, "mapRoom");
+        applyRarityStyle(icon, room, "mapRoom");
+        body.className = "ability-body";
+        tag.className = "ability-tag";
+        applyRarityStyle(tag, room, "mapRoom");
+        tag.textContent = "위험도 " + safeInteger(room.risk, 0) + " · 보상 x" + safeNumber(room.rewardMultiplier, 1).toFixed(2);
+        name.textContent = room.name || "전투방";
+        description.textContent = shortenDescription(room.description || "다음 구간을 선택합니다.");
+        body.appendChild(tag);
+        body.appendChild(name);
+        body.appendChild(description);
+        button.appendChild(icon);
+        button.appendChild(body);
+        button.addEventListener("click", function () {
+          if (AS.Game && AS.Game.applyMapRoom) {
+            AS.Game.applyMapRoom(room.id);
+          }
+        });
+        list.appendChild(button);
       }
     },
 
@@ -1444,6 +1611,12 @@
       const runModeItem = findById(Data.runModes, run.selectedRunModeId || save.selectedRunModeId, "survival");
       const eventItem = findById(Data.events, run.selectedEventId || save.selectedEventId, "normal");
       const weaponItem = findById(Data.weapons, run.selectedWeaponId || save.selectedWeaponId, "abyssBullet");
+      const classIcon = safeIcon(classItem.icon, classItem.id, "class");
+      const weaponIcon = safeIcon(weaponItem.icon, weaponItem.id, "weapon");
+      const zoneIcon = safeIcon(zoneItem.icon, zoneItem.id, "zone");
+      const modeIcon = safeIcon(runModeItem.icon, runModeItem.id, "runMode");
+      const challengeIcon = safeIcon(challengeItem.icon, challengeItem.id, "challenge");
+      const eventIcon = safeIcon(eventItem.icon, eventItem.id, "event");
       const runMissions = run.runMissions || [];
       const missionText = runMissions.map(function (mission) {
         return (mission.completed ? "완료 " : "미완료 ") + mission.name + (mission.completed ? " +" + safeInteger(mission.reward, 0) : "");
@@ -1461,16 +1634,18 @@
 
       setText(target, [
         resultText + " · ⏱ " + formatTime(run.time) + " · ☠ " + safeInteger(run.kills, 0) + " · Lv " + safeInteger(run.level, 1),
-        "⬟ " + classItem.name + " / ● " + weaponItem.name + " / ◇ " + zoneItem.name + " / 모드 " + (runModeItem.name || "생존") + " / ○ " + challengeItem.name + " / 이벤트 " + (eventItem.name || "일반") + " / 심연 " + safeInteger(run.selectedDepth, 0) + " x" + safeNumber(run.rewardMultiplier, 1).toFixed(2),
-        "◆ +" + safeInteger(run.shardReward, 0) + " · 임무 +" + safeInteger(run.missionShardReward, 0) + " · 보유 " + safeInteger(save.shards, 0),
-        (run.selectedRunModeId === "bossRush" ? "보스 러시: " + safeInteger(run.bossRushDefeated, 0) + "/" + safeInteger(run.bossRushBossCount, 0) : "5분 생존: " + (run.mode === (states.clear || "clear") ? "성공" : "실패")) + " · 보스 처치: " + (run.bossDefeated ? "성공" : "미달성"),
-        "임무: " + missionText,
-        "숙련도 +" + safeInteger(run.masteryExpGained, 0) + (run.depthUnlocked ? " · 다음 심연 단계 해금" : ""),
-        "신규 해금: " + unlocks,
+        classIcon + " " + classItem.name + " / " + weaponIcon + " " + weaponItem.name + " / " + zoneIcon + " " + zoneItem.name + " / " + modeIcon + " " + (runModeItem.name || "생존") + " / " + challengeIcon + " " + challengeItem.name + " / " + eventIcon + " " + (eventItem.name || "일반") + " / ✹ 심연 " + safeInteger(run.selectedDepth, 0) + " x" + safeNumber(run.rewardMultiplier, 1).toFixed(2),
+        "◈ +" + safeInteger(run.shardReward, 0) + " · 임무 +" + safeInteger(run.missionShardReward, 0) + " · 보유 " + safeInteger(save.shards, 0),
+        (run.selectedRunModeId === "bossRush" ? "♛ 보스 러시: " + safeInteger(run.bossRushDefeated, 0) + "/" + safeInteger(run.bossRushBossCount, 0) : "⏱ 5분 생존: " + (run.mode === (states.clear || "clear") ? "성공" : "실패")) + " · ☠ 보스 처치: " + (run.bossDefeated ? "성공" : "미달성"),
+        "◈ 임무: " + missionText,
+        "◆ 숙련도 +" + safeInteger(run.masteryExpGained, 0) + (run.depthUnlocked ? " · ✹ 다음 심연 단계 해금" : ""),
+        "◈ 신규 해금: " + unlocks,
+        formatEndgameRecord(run, save),
+        formatPathHistory(run),
         formatDamageRanking(run),
-        "엘리트 처치: " + safeInteger(run.eliteKills, 0),
-        "유물: " + relics,
-        "빌드: " + bonuses
+        "◆ 엘리트 처치: " + safeInteger(run.eliteKills, 0),
+        "◆ 유물: " + relics,
+        "✦ 빌드: " + bonuses
       ].join("\n"));
     },
 
