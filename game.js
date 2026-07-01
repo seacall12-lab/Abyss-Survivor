@@ -68,7 +68,17 @@
 
   function getChallengeModifiers(run) {
     const modifiers = run && run.challengeModifiers && typeof run.challengeModifiers === "object" ? run.challengeModifiers : {};
-    return modifiers;
+    const roomModifiers = run && run.activeRoomModifiers && typeof run.activeRoomModifiers === "object" ? run.activeRoomModifiers : {};
+    const bossVariantModifiers = run && run.activeBossVariantModifiers && typeof run.activeBossVariantModifiers === "object" ? run.activeBossVariantModifiers : {};
+    const result = Object.assign({}, modifiers);
+
+    result.spawnIntervalMultiplier = safeNumber(modifiers.spawnIntervalMultiplier, 1) * safeNumber(roomModifiers.spawnIntervalMultiplier, 1) * safeNumber(bossVariantModifiers.spawnIntervalMultiplier, 1);
+    result.enemyHpMultiplier = safeNumber(modifiers.enemyHpMultiplier, 1) * safeNumber(roomModifiers.enemyHpMultiplier, 1) * safeNumber(bossVariantModifiers.enemyHpMultiplier, 1);
+    result.enemyDamageMultiplier = safeNumber(modifiers.enemyDamageMultiplier, 1) * safeNumber(roomModifiers.enemyDamageMultiplier, 1) * safeNumber(bossVariantModifiers.enemyDamageMultiplier, 1);
+    result.enemySpeedMultiplier = safeNumber(modifiers.enemySpeedMultiplier, 1) * safeNumber(roomModifiers.enemySpeedMultiplier, 1) * safeNumber(bossVariantModifiers.enemySpeedMultiplier, 1);
+    result.eliteChanceBonus = safeNumber(modifiers.eliteChanceBonus, 0) + safeNumber(roomModifiers.eliteChanceBonus, 0) + safeNumber(bossVariantModifiers.eliteChanceBonus, 0);
+    result.maxEnemiesBonus = safeInteger(modifiers.maxEnemiesBonus, 0) + safeInteger(roomModifiers.maxEnemiesBonus, 0) + safeInteger(bossVariantModifiers.maxEnemiesBonus, 0);
+    return result;
   }
 
   function getWaveConfig(time) {
@@ -91,6 +101,80 @@
       return bosses[run.bossRushBossId];
     }
     return bosses[zone.bossId] || bosses.watcher || getEnemyData("boss");
+  }
+
+  function getBossVariantData(variantId) {
+    return findById(Data.bossVariants, variantId, "bloodVariant");
+  }
+
+  function getBossVariantChance(run) {
+    const depth = safeInteger(run && run.selectedDepth, 0);
+    const chances = Array.isArray(Data.endgame && Data.endgame.variantChances) ? Data.endgame.variantChances : [];
+
+    if (!run || isBossRushRun(run) || run.selectedZoneId === "abyssThrone") {
+      return 0;
+    }
+
+    for (let i = 0; i < chances.length; i += 1) {
+      if (depth >= safeInteger(chances[i] && chances[i].minDepth, 0)) {
+        return clamp(safeNumber(chances[i].chance, 0), 0, 1);
+      }
+    }
+
+    return depth >= 10 ? 0.25 : 0;
+  }
+
+  function chooseBossVariant(run) {
+    const variants = Array.isArray(Data.bossVariants) ? Data.bossVariants : [];
+    const forcedId = run && run.forceBossVariantId;
+
+    if (forcedId) {
+      return getBossVariantData(forcedId);
+    }
+    if (!variants.length || Math.random() >= getBossVariantChance(run)) {
+      return null;
+    }
+
+    return variants[Math.floor(Math.random() * variants.length)] || null;
+  }
+
+  function applyBossVariant(enemy, variant) {
+    if (!enemy || !variant) {
+      return enemy;
+    }
+
+    enemy.variantId = variant.id || "";
+    enemy.variantName = variant.name || "변종 보스";
+    enemy.name = (variant.shortName || variant.name || "변종") + " " + (enemy.name || "보스");
+    enemy.maxHp = Math.max(1, safeNumber(enemy.maxHp, 1) * safeNumber(variant.hpMultiplier, 1));
+    enemy.hp = enemy.maxHp;
+    enemy.damage = Math.max(1, safeNumber(enemy.damage, 1) * safeNumber(variant.damageMultiplier, 1));
+    enemy.speed = Math.max(0, safeNumber(enemy.speed, 0) * safeNumber(variant.speedMultiplier, 1));
+    enemy.score = Math.max(0, safeNumber(enemy.score, 0) * safeNumber(variant.rewardMultiplier, 1));
+    enemy.auraDamageBonus = Math.max(0, safeNumber(variant.auraDamageBonus, 0));
+    enemy.summonIntervalMultiplier = clamp(safeNumber(variant.summonIntervalMultiplier, 1), 0.35, 2);
+    enemy.chargeCooldownMultiplier = clamp(safeNumber(variant.chargeCooldownMultiplier, 1), 0.35, 2);
+    enemy.baseSpeed = enemy.speed;
+    return enemy;
+  }
+
+  function applyFinalBossScaling(enemy, run) {
+    const depth = safeInteger(run && run.selectedDepth, 0);
+    const endgame = Data.endgame || {};
+
+    if (!enemy || enemy.bossId !== "abyssSovereign") {
+      return enemy;
+    }
+
+    enemy.finalBoss = true;
+    if (depth >= 20) {
+      enemy.maxHp = Math.max(1, safeNumber(enemy.maxHp, 1) * safeNumber(endgame.finalBossDepth20HpMultiplier, 1.22));
+      enemy.hp = enemy.maxHp;
+      enemy.damage = Math.max(1, safeNumber(enemy.damage, 1) * safeNumber(endgame.finalBossDepth20DamageMultiplier, 1.14));
+      enemy.phaseCooldownMultiplier = 0.9;
+    }
+
+    return enemy;
   }
 
   function isBossRushRun(run) {
@@ -375,8 +459,8 @@
     return {
       data: supportData,
       level: level,
-      damage: clamp(baseDamage * safeNumber(supportData.damageRatio, 0.35) * levelBonus, 1, 999),
-      cooldown: clamp(safeNumber(supportData.cooldown, 1.5) * (1 - (level - 1) * 0.08), 0.35, 6),
+      damage: clamp(baseDamage * safeNumber(supportData.damageRatio, 0.35) * levelBonus * safeNumber(player.supportDamageMultiplier, 1), 1, 999),
+      cooldown: clamp(safeNumber(supportData.cooldown, 1.5) * (1 - (level - 1) * 0.08) * safeNumber(player.supportCooldownMultiplier, 1), 0.35, 6),
       projectileCount: clamp(safeInteger(supportData.projectileCount, 1) + (level >= 3 ? 1 : 0), 1, 4),
       projectileSpeed: clamp(safeNumber(player.projectileSpeed, baseProjectileSpeed) * (0.9 + speedScale * 0.08), 60, 820),
       projectileRadius: clamp(safeNumber(player.projectileRadius, baseProjectileRadius) * 0.72 * sizeScale, 2, 14),
@@ -763,8 +847,27 @@
       enemy.auraTickTimer = safeNumber((Data.bossPattern || {}).auraTick, 1.2);
       enemy.patterns = Array.isArray(base.patterns) ? base.patterns.slice() : [];
       enemy.phase2HpRatio = clamp(safeNumber(base.phase2HpRatio, 0.5), 0.1, 0.9);
+      enemy.phaseCooldownMultiplier = 1;
       enemy.shockwaveTimer = 4.8;
       enemy.stormAuraTimer = 1.4;
+      if (!isBossRushRun(run)) {
+        applyFinalBossScaling(enemy, run);
+        if (!enemy.finalBoss) {
+          const variant = chooseBossVariant(run);
+          if (variant) {
+            applyBossVariant(enemy, variant);
+            run.bossVariantId = variant.id || "";
+            run.bossVariantName = variant.name || "";
+            run.rewardMultiplier = clamp(safeNumber(run.rewardMultiplier, 1) * safeNumber(variant.rewardMultiplier, 1), 0, 5);
+            run.activeBossVariantModifiers = {
+              eliteChanceBonus: safeNumber(variant.eliteChanceBonus, 0)
+            };
+          }
+        } else {
+          run.finalBossEncountered = true;
+          run.activeBossVariantModifiers = {};
+        }
+      }
     }
 
     return enemy;
@@ -1655,13 +1758,14 @@
     const owned = {};
     const pool = [];
     const result = [];
+    const selectedDepth = safeInteger(run && run.selectedDepth, 0);
 
     for (let i = 0; i < (run.relics || []).length; i += 1) {
       owned[(run.relics[i] || {}).id] = true;
     }
 
     for (let i = 0; i < relics.length; i += 1) {
-      if (relics[i] && !owned[relics[i].id]) {
+      if (relics[i] && !owned[relics[i].id] && selectedDepth >= safeInteger(relics[i].minDepth, 0)) {
         pool.push(relics[i]);
       }
     }
@@ -1725,6 +1829,160 @@
     }
 
     return result;
+  }
+
+  function getMapRoomData(roomId) {
+    return findById(Data.mapRooms, roomId, "combat");
+  }
+
+  function createMapRoomChoice(room) {
+    const data = room || getMapRoomData("combat");
+    return {
+      id: data.id,
+      name: data.name || "전투방",
+      shortName: data.shortName || data.name || "전투",
+      icon: data.icon || "⚔",
+      rarity: data.rarity || "common",
+      description: data.description || "기본 전투가 이어집니다.",
+      risk: clamp(safeInteger(data.risk, 1), 0, 5),
+      rewardMultiplier: clamp(safeNumber(data.rewardMultiplier, 1), 0.1, 2),
+      rewardHint: data.rewardHint || "",
+      immediateEffect: data.immediateEffect || "",
+      healRatio: clamp(safeNumber(data.healRatio, 0), 0, 1),
+      modifiers: Object.assign({}, data.modifiers || {})
+    };
+  }
+
+  function chooseMapRooms(run) {
+    const rooms = Array.isArray(Data.mapRooms) ? Data.mapRooms : [];
+    const maxChoices = Math.max(1, safeInteger((Data.map || {}).choicesPerOffer, 3));
+    const pool = [];
+    const result = [];
+    const seen = {};
+    const player = run && run.player ? run.player : {};
+    const hpRatio = safeNumber(player.hp, 1) / Math.max(1, safeNumber(player.maxHp, 1));
+    const elapsed = safeNumber(run && run.time, 0);
+
+    for (let i = 0; i < rooms.length; i += 1) {
+      const room = rooms[i];
+      if (!room || !room.id) {
+        continue;
+      }
+      let weight = 10;
+      if (room.id === "combat") {
+        weight = 22;
+      } else if (room.id === "heal") {
+        weight = hpRatio < 0.45 ? 22 : 8;
+      } else if (room.id === "elite") {
+        weight = elapsed > safeNumber(run.runDuration, 180) * 0.33 ? 16 : 8;
+      } else if (room.id === "relic") {
+        weight = safeInteger(run.relicOfferCount, 0) < 3 ? 10 : 3;
+      } else if (room.id === "support") {
+        weight = Array.isArray(Data.supportWeapons) && Data.supportWeapons.length ? 14 : 6;
+      }
+      for (let j = 0; j < weight; j += 1) {
+        pool.push(room);
+      }
+    }
+
+    result.push(createMapRoomChoice(getMapRoomData(hpRatio < 0.35 ? "heal" : "combat")));
+    seen[result[0].id] = true;
+
+    while (pool.length && result.length < maxChoices) {
+      const index = Math.floor(Math.random() * pool.length);
+      const room = pool.splice(index, 1)[0];
+      if (!seen[room.id]) {
+        result.push(createMapRoomChoice(room));
+        seen[room.id] = true;
+      }
+    }
+
+    while (result.length < maxChoices) {
+      const fallback = createMapRoomChoice(getMapRoomData("combat"));
+      fallback.id = fallback.id + ":" + result.length;
+      result.push(fallback);
+    }
+
+    return result.slice(0, maxChoices);
+  }
+
+  function startMapChoice(run) {
+    if (!run || isBossRushRun(run) || run.mode !== (states.running || "running")) {
+      return false;
+    }
+
+    run.mapRoomChoices = chooseMapRooms(run);
+    run.mode = states.mapChoice || "mapChoice";
+    if (run.input) {
+      run.input.active = false;
+      run.input.moveX = 0;
+      run.input.moveY = 0;
+      run.input.pointerId = null;
+    }
+    return true;
+  }
+
+  function updateMapChoiceTrigger(run) {
+    const times = Array.isArray(run && run.mapChoiceTimes) ? run.mapChoiceTimes : [];
+    const maxChoices = Math.max(0, safeInteger((Data.map || {}).maxChoices, 3));
+    const index = clamp(safeInteger(run && run.mapChoiceIndex, 0), 0, maxChoices);
+    const targetTime = times[index];
+
+    if (!run || isBossRushRun(run) || index >= maxChoices || !Number.isFinite(Number(targetTime))) {
+      return;
+    }
+    if (run.bossRush || run.selectedRunModeId === "bossRush" || run.finished || run.mode !== (states.running || "running")) {
+      return;
+    }
+    if (run.mapChoicesTriggered && run.mapChoicesTriggered[String(index)]) {
+      run.mapChoiceIndex = index + 1;
+      return;
+    }
+    if (safeNumber(run.time, 0) >= safeNumber(targetTime, 0)) {
+      if (!run.mapChoicesTriggered) {
+        run.mapChoicesTriggered = {};
+      }
+      run.mapChoicesTriggered[String(index)] = true;
+      run.mapChoiceIndex = index + 1;
+      startMapChoice(run);
+    }
+  }
+
+  function applyRoomImmediateEffect(run, room) {
+    const effect = room && room.immediateEffect;
+
+    if (effect === "heal") {
+      healPlayer(run, Math.max(0, safeNumber(run.player && run.player.maxHp, 1) * safeNumber(room.healRatio, 0.35)));
+      run.mode = states.running || "running";
+      return;
+    }
+
+    if (effect === "relicChoice") {
+      const choices = chooseRelics(run, 3);
+      if (choices.length > 0) {
+        run.pendingAbilities = choices;
+        run.relicChoices = choices;
+        run.relicOfferCount = Math.max(0, safeInteger(run.relicOfferCount, 0)) + 1;
+        run.mode = states.levelup || "levelup";
+        return;
+      }
+    }
+
+    if (effect === "supportChoice") {
+      const supportChoices = chooseSupportChoices(run);
+      if (supportChoices.length > 0) {
+        run.pendingAbilities = supportChoices.slice(0, 3);
+        run.relicChoices = [];
+        run.mode = states.levelup || "levelup";
+        return;
+      }
+      run.pendingAbilities = chooseAbilities(Data.abilities || [], 3);
+      run.relicChoices = [];
+      run.mode = states.levelup || "levelup";
+      return;
+    }
+
+    run.mode = states.running || "running";
   }
 
   function chooseAbilities(abilities, count) {
@@ -1892,6 +2150,15 @@
     }
 
     if (enemy.isBoss) {
+      if (enemy.finalBoss || enemy.bossId === "abyssSovereign") {
+        run.finalBossDefeated = true;
+      }
+      if (enemy.variantId) {
+        run.variantBossDefeated = true;
+        run.variantBossKillsInRun = Math.max(0, safeInteger(run.variantBossKillsInRun, 0)) + 1;
+      }
+      run.activeBossVariantModifiers = {};
+
       if (isBossRushRun(run)) {
         run.bossDefeated = true;
         run.bossRushActiveBoss = false;
@@ -1972,14 +2239,14 @@
           if (run.bossContactTimer > 0) {
             continue;
           }
-          player.hp = Math.max(0, safeNumber(player.hp, 0) - Math.max(0, safeNumber(enemy.damage, 0) * safeNumber(player.damageTakenMultiplier, 1) * getBossContactDamageMultiplier(run)));
+          player.hp = Math.max(0, safeNumber(player.hp, 0) - Math.max(0, safeNumber(enemy.damage, 0) * safeNumber(player.damageTakenMultiplier, 1) * safeNumber(player.contactDamageMultiplier, 1) * getBossContactDamageMultiplier(run)));
           run.bossContactTimer = Math.max(0.1, safeNumber((Data.game || {}).bossContactTickInterval, 0.7));
           run.invincibleTimer = Math.max(run.invincibleTimer, 0.12);
         } else {
           if (run.invincibleTimer > 0) {
             continue;
           }
-          player.hp = Math.max(0, safeNumber(player.hp, 0) - Math.max(0, safeNumber(enemy.damage, 0) * safeNumber(player.damageTakenMultiplier, 1)));
+          player.hp = Math.max(0, safeNumber(player.hp, 0) - Math.max(0, safeNumber(enemy.damage, 0) * safeNumber(player.damageTakenMultiplier, 1) * safeNumber(player.contactDamageMultiplier, 1)));
           run.invincibleTimer = Math.max(0, safeNumber(player.invincibleTime, 0.6));
         }
         player.hitFlashTimer = 0.16;
@@ -2139,7 +2406,7 @@
         boss.chargeActiveTimer = Math.max(0, boss.chargeActiveTimer - delta);
         if (boss.chargeActiveTimer <= 0) {
           boss.speed = safeNumber(boss.baseSpeed, boss.speed);
-          boss.chargeTimer = safeNumber(pattern.chargeCooldown, 7) * safeNumber(boss.phaseCooldownMultiplier, 1);
+          boss.chargeTimer = safeNumber(pattern.chargeCooldown, 7) * safeNumber(boss.phaseCooldownMultiplier, 1) * safeNumber(boss.chargeCooldownMultiplier, 1);
         }
       } else if (boss.chargeTimer <= 0) {
         dir = normalize(safeNumber(player.x, 0) - safeNumber(boss.x, 0), safeNumber(player.y, 0) - safeNumber(boss.y, 0));
@@ -2161,7 +2428,7 @@
             summoned.color = "#8fd8ff";
           }
         }
-        boss.summonTimer = safeNumber(pattern.summonCooldown, 8) * safeNumber(boss.phaseCooldownMultiplier, 1);
+        boss.summonTimer = safeNumber(pattern.summonCooldown, 8) * safeNumber(boss.phaseCooldownMultiplier, 1) * safeNumber(boss.summonIntervalMultiplier, 1);
       }
 
       if (hasBossPattern(boss, "shockwave") && boss.shockwaveTimer <= 0) {
@@ -2211,7 +2478,7 @@
       if (boss.auraTickTimer <= 0) {
         boss.auraTickTimer = safeNumber(pattern.auraTick, 1.2);
         if (distanceSquared(player, boss) <= Math.pow(safeNumber(boss.auraRadius, 62) + safeNumber(player.radius, 12), 2)) {
-          player.hp = Math.max(0, safeNumber(player.hp, 0) - Math.max(1, safeNumber(pattern.auraDamage, 5) * safeNumber(player.damageTakenMultiplier, 1)));
+          player.hp = Math.max(0, safeNumber(player.hp, 0) - Math.max(1, safeNumber(pattern.auraDamage, 5) * (1 + safeNumber(boss.auraDamageBonus, 0)) * safeNumber(player.damageTakenMultiplier, 1)));
           player.hitFlashTimer = 0.16;
           pushImpactEffect(run, player, "player", safeNumber(player.radius, 12) + 10);
           if (player.hp <= 0) {
@@ -2294,6 +2561,86 @@
       while (run.mines.length > maxMines) {
         run.mines.shift();
       }
+    }
+  }
+
+  function sanitizeActorNumbers(actor, fallbackX, fallbackY) {
+    if (!actor) {
+      return;
+    }
+
+    actor.x = safeNumber(actor.x, fallbackX);
+    actor.y = safeNumber(actor.y, fallbackY);
+    actor.radius = Math.max(0, safeNumber(actor.radius, 1));
+    if (Object.prototype.hasOwnProperty.call(actor, "hp")) {
+      actor.hp = Math.max(0, safeNumber(actor.hp, 0));
+    }
+    if (Object.prototype.hasOwnProperty.call(actor, "maxHp")) {
+      actor.maxHp = Math.max(1, safeNumber(actor.maxHp, 1));
+      actor.hp = clamp(safeNumber(actor.hp, actor.maxHp), 0, actor.maxHp);
+    }
+    if (Object.prototype.hasOwnProperty.call(actor, "damage")) {
+      actor.damage = Math.max(0, safeNumber(actor.damage, 0));
+    }
+    if (Object.prototype.hasOwnProperty.call(actor, "speed")) {
+      actor.speed = Math.max(0, safeNumber(actor.speed, 0));
+    }
+  }
+
+  function sanitizeRunNumbers(run) {
+    const worldWidth = getWorldWidth(run);
+    const worldHeight = getWorldHeight(run);
+    const player = run && run.player ? run.player : null;
+    const arrays = ["enemies", "projectiles", "gems", "effects", "damageTexts"];
+
+    if (!run) {
+      return;
+    }
+
+    run.time = Math.max(0, safeNumber(run.time, 0));
+    run.remainingTime = Math.max(0, safeNumber(run.remainingTime, safeNumber(run.runDuration, 0)));
+    run.rewardMultiplier = clamp(safeNumber(run.rewardMultiplier, 1), 0, 5);
+    run.pathRewardMultiplier = clamp(safeNumber(run.pathRewardMultiplier, 1), 0.1, safeNumber((Data.map || {}).rewardMultiplierMax, 1.6));
+
+    if (player) {
+      sanitizeActorNumbers(player, worldWidth / 2, worldHeight / 2);
+      player.x = clamp(player.x, safeNumber(player.radius, 12), worldWidth - safeNumber(player.radius, 12));
+      player.y = clamp(player.y, safeNumber(player.radius, 12), worldHeight - safeNumber(player.radius, 12));
+      player.attackCooldown = Math.max(0.01, safeNumber(player.attackCooldown, 0.5));
+      player.projectileSpeed = Math.max(0, safeNumber(player.projectileSpeed, 0));
+      player.projectileRadius = Math.max(1, safeNumber(player.projectileRadius, 1));
+      player.pickupRadius = Math.max(1, safeNumber(player.pickupRadius, 1));
+    }
+
+    for (let i = 0; i < arrays.length; i += 1) {
+      if (!Array.isArray(run[arrays[i]])) {
+        run[arrays[i]] = [];
+      }
+    }
+
+    for (let e = run.enemies.length - 1; e >= 0; e -= 1) {
+      sanitizeActorNumbers(run.enemies[e], worldWidth / 2, worldHeight / 2);
+      if (run.enemies[e].x < -200 || run.enemies[e].x > worldWidth + 200 || run.enemies[e].y < -200 || run.enemies[e].y > worldHeight + 200) {
+        run.enemies.splice(e, 1);
+      }
+    }
+
+    for (let p = run.projectiles.length - 1; p >= 0; p -= 1) {
+      sanitizeActorNumbers(run.projectiles[p], player ? player.x : worldWidth / 2, player ? player.y : worldHeight / 2);
+      run.projectiles[p].vx = safeNumber(run.projectiles[p].vx, 0);
+      run.projectiles[p].vy = safeNumber(run.projectiles[p].vy, 0);
+      run.projectiles[p].life = Math.max(0, safeNumber(run.projectiles[p].life, 0));
+    }
+
+    for (let g = run.gems.length - 1; g >= 0; g -= 1) {
+      sanitizeActorNumbers(run.gems[g], player ? player.x : worldWidth / 2, player ? player.y : worldHeight / 2);
+      run.gems[g].exp = Math.max(0, safeNumber(run.gems[g].exp, 0));
+    }
+
+    for (let t = run.damageTexts.length - 1; t >= 0; t -= 1) {
+      sanitizeActorNumbers(run.damageTexts[t], player ? player.x : worldWidth / 2, player ? player.y : worldHeight / 2);
+      run.damageTexts[t].value = Math.max(0, safeNumber(run.damageTexts[t].value, 0));
+      run.damageTexts[t].life = Math.max(0, safeNumber(run.damageTexts[t].life, 0));
     }
   }
 
@@ -2459,12 +2806,17 @@
     player.hp = clamp(player.maxHp * clamp(hpRatio, 0, 1) + Math.max(0, boostedEffectValue("maxHp", 0)), 1, player.maxHp);
     player.speed = Math.max(0, (safeNumber(player.speed, 0) + boostedEffectValue("speed", 0)) * safeNumber(effect.speedMultiplier, 1));
     player.damage = Math.max(1, safeNumber(player.damage, 1) + boostedEffectValue("damage", 0));
+    player.damage = Math.max(1, player.damage * safeNumber(effect.damageMultiplier, 1));
     player.attackCooldown = Math.max(0.15, safeNumber(player.attackCooldown, 0.5) + boostedEffectValue("attackCooldown", 0));
+    player.attackCooldown = Math.max(0.12, player.attackCooldown * safeNumber(effect.attackCooldownMultiplier, 1));
     player.projectileSpeed = Math.max(0, safeNumber(player.projectileSpeed, 0) + boostedEffectValue("projectileSpeed", 0));
     player.projectileRadius = Math.max(1, safeNumber(player.projectileRadius, 1) + boostedEffectValue("projectileRadius", 0));
     player.pickupRadius = Math.max(1, safeNumber(player.pickupRadius, 1) + boostedEffectValue("pickupRadius", 0));
     player.invincibleTime = Math.max(0, safeNumber(player.invincibleTime, 0) + boostedEffectValue("invincibleTime", 0));
-    player.damageTakenMultiplier = Math.max(0.1, safeNumber(player.damageTakenMultiplier, 1) * safeNumber(effect.damageTakenMultiplier, 1));
+    player.damageTakenMultiplier = Math.max(0.1, safeNumber(player.damageTakenMultiplier, 1) * safeNumber(effect.damageTakenMultiplier, 1) * safeNumber(effect.damageReductionMultiplier, 1));
+    player.contactDamageMultiplier = Math.max(0.1, safeNumber(player.contactDamageMultiplier, 1) * safeNumber(effect.contactDamageMultiplier, 1));
+    player.supportDamageMultiplier = Math.max(0.1, safeNumber(player.supportDamageMultiplier, 1) * safeNumber(effect.supportDamageMultiplier, 1));
+    player.supportCooldownMultiplier = Math.max(0.1, safeNumber(player.supportCooldownMultiplier, 1) * safeNumber(effect.supportCooldownMultiplier, 1));
     player.expMultiplier = Math.max(0.1, safeNumber(player.expMultiplier, 1) * safeNumber(effect.expMultiplier, 1));
     player.gemHealChance = clamp(safeNumber(player.gemHealChance, 0) + boostedEffectValue("gemHealChance", 0), 0, 1);
     player.gemHealAmount = Math.max(0, safeNumber(player.gemHealAmount, 0) + boostedEffectValue("gemHealAmount", 0));
@@ -2482,6 +2834,11 @@
     player.mineRadiusMultiplier = Math.max(0.1, safeNumber(player.mineRadiusMultiplier, 1) * safeNumber(effect.mineRadiusMultiplier, 1));
     player.explosionRadiusMultiplier = Math.max(0.1, safeNumber(player.explosionRadiusMultiplier, 1) * safeNumber(effect.explosionRadiusMultiplier, 1));
     player.waveRadiusMultiplier = Math.max(0.1, safeNumber(player.waveRadiusMultiplier, 1) * safeNumber(effect.waveRadiusMultiplier, 1));
+    player.mineRadiusMultiplier = Math.max(0.1, safeNumber(player.mineRadiusMultiplier, 1) * safeNumber(effect.areaMultiplier, 1));
+    player.explosionRadiusMultiplier = Math.max(0.1, safeNumber(player.explosionRadiusMultiplier, 1) * safeNumber(effect.areaMultiplier, 1));
+    player.waveRadiusMultiplier = Math.max(0.1, safeNumber(player.waveRadiusMultiplier, 1) * safeNumber(effect.areaMultiplier, 1));
+    player.explosionDamageMultiplier = Math.max(0.1, safeNumber(player.explosionDamageMultiplier, 1) * safeNumber(effect.explosionMultiplier, 1));
+    player.waveDamageMultiplier = Math.max(0.1, safeNumber(player.waveDamageMultiplier, 1) * safeNumber(effect.waveMultiplier, 1));
     player.eliteDamageMultiplier = Math.max(0.1, safeNumber(player.eliteDamageMultiplier, 1) * safeNumber(effect.eliteDamageMultiplier, 1));
     player.bossDamageMultiplier = Math.max(0.1, safeNumber(player.bossDamageMultiplier, 1) * safeNumber(effect.bossDamageMultiplier, 1));
     player.effectDurationMultiplier = Math.max(0.1, safeNumber(player.effectDurationMultiplier, 1) * safeNumber(effect.effectDurationMultiplier, 1));
@@ -2606,6 +2963,74 @@
       return getDamageRanking(run || (AS.State && AS.State.getRun ? AS.State.getRun() : null), limit || 5);
     },
 
+    getMapRoomData: function (roomId) {
+      return getMapRoomData(roomId);
+    },
+
+    getBossVariantChance: function (run) {
+      return getBossVariantChance(run || (AS.State && AS.State.getRun ? AS.State.getRun() : null));
+    },
+
+    getBossVariantData: function (variantId) {
+      return getBossVariantData(variantId);
+    },
+
+    chooseRelics: function (run, count) {
+      return chooseRelics(run || (AS.State && AS.State.getRun ? AS.State.getRun() : null), count || 3);
+    },
+
+    applyBossVariant: function (enemy, variantId) {
+      return applyBossVariant(enemy, getBossVariantData(variantId));
+    },
+
+    chooseMapRooms: function (run) {
+      return chooseMapRooms(run || (AS.State && AS.State.getRun ? AS.State.getRun() : null));
+    },
+
+    applyMapRoom: function (roomId) {
+      const run = AS.State.getRun();
+      const choices = Array.isArray(run.mapRoomChoices) ? run.mapRoomChoices : [];
+      let selected = null;
+
+      for (let i = 0; i < choices.length; i += 1) {
+        if (choices[i] && choices[i].id === roomId) {
+          selected = choices[i];
+          break;
+        }
+      }
+
+      if (!selected) {
+        selected = createMapRoomChoice(getMapRoomData(roomId));
+      }
+
+      run.currentMapRoom = {
+        id: selected.id,
+        name: selected.name,
+        shortName: selected.shortName,
+        risk: safeInteger(selected.risk, 1),
+        rewardMultiplier: safeNumber(selected.rewardMultiplier, 1)
+      };
+      run.activeRoomModifiers = Object.assign({}, selected.modifiers || {});
+      run.pathRewardMultiplier = clamp(safeNumber(run.pathRewardMultiplier, 1) * safeNumber(selected.rewardMultiplier, 1), 0.1, safeNumber((Data.map || {}).rewardMultiplierMax, 1.6));
+      if (!Array.isArray(run.pathHistory)) {
+        run.pathHistory = [];
+      }
+      if (run.pathHistory.length < Math.max(1, safeInteger((Data.map || {}).maxChoices, 3))) {
+        run.pathHistory.push({
+          time: Math.max(0, Math.floor(safeNumber(run.time, 0))),
+          roomId: selected.id,
+          roomName: selected.name,
+          risk: safeInteger(selected.risk, 1),
+          rewardMultiplier: safeNumber(selected.rewardMultiplier, 1)
+        });
+      }
+      run.mapRoomChoices = [];
+      run.message = selected.name + " 선택";
+      run.messageTimer = 2;
+      applyRoomImmediateEffect(run, selected);
+      return run;
+    },
+
     update: function (run, delta) {
       const game = Data.game || {};
       const safeDelta = clamp(safeNumber(delta, 0), 0, 0.05);
@@ -2615,8 +3040,13 @@
       }
 
       ensureRunCollections(run);
+      sanitizeRunNumbers(run);
       run.time = Math.max(0, safeNumber(run.time, 0) + safeDelta);
       run.remainingTime = Math.max(0, safeNumber(run.runDuration, safeNumber(game.runDuration, 180)) - run.time);
+      updateMapChoiceTrigger(run);
+      if (run.mode !== (states.running || "running")) {
+        return;
+      }
       if (!run.initialBuildChecked) {
         run.initialBuildChecked = true;
         updateBuildBonuses(run);
@@ -2659,6 +3089,7 @@
         run.message = "";
       }
 
+      sanitizeRunNumbers(run);
       if (run.remainingTime <= 0 && run.mode === (states.running || "running")) {
         AS.State.finishRun(!isBossRushRun(run));
       }
