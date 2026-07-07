@@ -2,7 +2,7 @@
 
 ## 현재 구현 기준
 
-현재 저장소는 v10.0 안정화 단계다. 코드에는 v8 심연 지도 시스템과 v9 엔드게임 시스템이 이미 반영되어 있으므로, v10에서는 새 대형 게임 기능을 만들지 않고 기존 기능의 로딩, 저장, 상태 전환, 보상, 아이콘, PWA, 테스트를 안정화한다.
+현재 저장소는 v10.1 확장 단계다. 코드에는 v8 심연 지도 시스템과 v9 엔드게임 시스템이 반영되어 있으며, v10.1에서는 저장 호환성을 유지한 상태로 빌드/선택 편의 UI, 미니 목표, 보스/정예 예고, 접근성 난이도 보정을 추가한다.
 
 ## 개발 조건
 
@@ -29,8 +29,7 @@ ui.js
 main.js
 manifest.json
 service-worker.js
-icons/icon-192.png
-icons/icon-512.png
+icons/icon.svg
 test-runner.html
 README.md
 version-up.txt
@@ -89,7 +88,7 @@ endgame
 settings
 ```
 
-localStorage 접근 실패, JSON 파싱 실패, 누락 필드, 잘못된 selected id, NaN/Infinity 숫자는 기본값으로 복구한다. 기존 저장 데이터는 삭제하지 않는다.
+localStorage 접근 실패, JSON 파싱 실패, 누락 필드, 잘못된 selected id, NaN/Infinity 숫자는 기본값으로 복구한다. 기존 저장 데이터는 삭제하지 않는다. 새 설정과 성장 항목은 누락 시 기본값으로 보정한다.
 
 ## 게임 상태
 
@@ -120,6 +119,12 @@ v9 엔드게임
 결과 화면 요약
 아이콘 fallback
 가벼운 PWA
+빌드 현황 패널
+레벨업 선택지 리롤/고정/제외
+추천 조합 프리셋
+접근성 난이도 보정
+봉화 미니 목표
+보스/정예 예고 표시
 ```
 
 ## PWA
@@ -127,11 +132,10 @@ v9 엔드게임
 ```text
 manifest.json
 service-worker.js
-icons/icon-192.png
-icons/icon-512.png
+icons/icon.svg
 ```
 
-캐시명은 `abyss-survivor-v10.0.0`이다. service worker는 게임 실행에 필요한 최소 파일만 캐시한다. `test-runner.html`과 문서 파일은 캐시하지 않는다. 등록 실패는 게임 실행 실패로 이어지면 안 된다.
+캐시명은 `abyss-survivor-v10.1.0`이다. PWA 아이콘은 `icons/icon.svg`만 사용하며 PNG 아이콘 파일은 필수로 요구하지 않는다. service worker는 게임 실행에 필요한 최소 파일만 캐시한다. `test-runner.html`과 문서 파일은 캐시하지 않는다. 등록 실패는 게임 실행 실패로 이어지면 안 된다.
 
 ## 안정화 기준
 
@@ -151,6 +155,11 @@ v9 최종 보스/변종 보스/첫 클리어 보상 중복 방어
 아이콘 fallback과 정렬 유지
 모바일 전체 페이지 스크롤 방지
 PWA manifest/service worker/icon 연결
+빌드 현황과 임무 HUD 표시
+레벨업 선택지 시너지, 리롤, 고정, 제외 기능
+추천 조합과 접근성 난이도 설정
+봉화 미니 목표 완료/실패 기록
+보스/정예 예고 effect 표시
 ```
 
 ## 테스트 기준
@@ -170,4 +179,6 @@ damageStats 방어
 v8 지도 선택
 v9 엔드게임 보상 중복 방어
 PWA 연결
+빌드/선택 편의 기능
+미니 목표와 보스 예고
 ```
