@@ -253,7 +253,63 @@
           ctx.lineTo(effect.x + Math.cos(angle) * radius, effect.y + Math.sin(angle) * radius);
           ctx.stroke();
         }
+      } else if (effect.type === "warningLine") {
+        ctx.strokeStyle = "rgba(255, 93, 93, " + (0.16 + alpha * 0.34) + ")";
+        ctx.lineWidth = Math.max(12, safeNumber(effect.lineWidth, 28));
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(safeNumber(effect.fromX, 0), safeNumber(effect.fromY, 0));
+        ctx.lineTo(safeNumber(effect.toX, 0), safeNumber(effect.toY, 0));
+        ctx.stroke();
+        ctx.lineCap = "butt";
+      } else if (effect.type === "warningCircle") {
+        ctx.strokeStyle = "rgba(255, 93, 93, " + (0.22 + alpha * 0.46) + ")";
+        ctx.lineWidth = 3;
+        ctx.setLineDash([7, 5]);
+        ctx.beginPath();
+        ctx.arc(safeNumber(effect.x, 0), safeNumber(effect.y, 0), Math.max(8, safeNumber(effect.radius, 48)), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else if (effect.type === "objective") {
+        ctx.strokeStyle = "rgba(213, 239, 115, " + (0.25 + alpha * 0.5) + ")";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(safeNumber(effect.x, 0), safeNumber(effect.y, 0), Math.max(8, safeNumber(effect.radius, 48) * (1.05 - alpha * 0.2)), 0, Math.PI * 2);
+        ctx.stroke();
       }
+    }
+  }
+
+  function drawMiniObjectives(run) {
+    const objectives = Array.isArray(run && run.miniObjectives) ? run.miniObjectives : [];
+
+    for (let i = 0; i < objectives.length; i += 1) {
+      const objective = objectives[i];
+      const radius = Math.max(8, safeNumber(objective.radius, 48));
+      const target = Math.max(1, safeNumber(objective.target, 10));
+      const progress = Math.max(0, Math.min(1, safeNumber(objective.progress, 0) / target));
+
+      ctx.fillStyle = "rgba(213, 239, 115, 0.08)";
+      ctx.beginPath();
+      ctx.arc(safeNumber(objective.x, 0), safeNumber(objective.y, 0), radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(213, 239, 115, 0.56)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.arc(safeNumber(objective.x, 0), safeNumber(objective.y, 0), radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = "#d5ef73";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(safeNumber(objective.x, 0), safeNumber(objective.y, 0), radius + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+      ctx.stroke();
+      ctx.fillStyle = "#d5ef73";
+      ctx.font = "bold 18px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("◎", safeNumber(objective.x, 0), safeNumber(objective.y, 0));
     }
   }
 
@@ -425,6 +481,7 @@
       ctx.save();
       ctx.translate(-camera.x, -camera.y);
       drawGems(run);
+      drawMiniObjectives(run);
       drawEffects(run);
       drawProjectiles(run);
       drawEnemies(run);
