@@ -33,7 +33,13 @@
       bossRushSpawnDelay: 1.2,
       bossRushMinionInterval: 1.35,
       bossRushMaxEnemies: 46,
-      bossRushRewardMultiplier: 1.25
+      bossRushRewardMultiplier: 1.25,
+      miniObjectiveFirstTime: 55,
+      miniObjectiveInterval: 95,
+      miniObjectiveCount: 2,
+      miniObjectiveRadius: 48,
+      miniObjectiveHoldTime: 10,
+      miniObjectiveRewardMultiplier: 1.08
     },
 
     states: {
@@ -388,6 +394,26 @@
           eliteChanceBonus: 0,
           maxEnemiesBonus: 0
         }
+      },
+      {
+        id: "beacon",
+        name: "봉화방",
+        shortName: "봉화",
+        icon: "◎",
+        rarity: "epic",
+        description: "위험한 봉화 목표가 등장하고 완료 시 최종 보상이 증가합니다.",
+        risk: 3,
+        rewardMultiplier: 1.12,
+        rewardHint: "미니 목표와 보상 증가",
+        immediateEffect: "objective",
+        modifiers: {
+          spawnIntervalMultiplier: 0.92,
+          enemyHpMultiplier: 1.04,
+          enemyDamageMultiplier: 1.02,
+          enemySpeedMultiplier: 1,
+          eliteChanceBonus: 0.025,
+          maxEnemiesBonus: 8
+        }
       }
     ],
 
@@ -530,6 +556,15 @@
         description: "심연 단계에서 증가하는 피해 부담을 줄입니다.",
         maxLevel: 10,
         effectPerLevel: 1.5,
+        advanced: true,
+        unlockFeature: "advancedUpgrades"
+      },
+      {
+        id: "choiceControl",
+        name: "선택 통제",
+        description: "레벨업 선택지 리롤 횟수와 제외 가능 횟수가 증가합니다.",
+        maxLevel: 3,
+        effectPerLevel: 1,
         advanced: true,
         unlockFeature: "advancedUpgrades"
       }
@@ -860,6 +895,46 @@
         rarity: "epic",
         description: "보스를 연속으로 처치하고 보스 사이마다 보상을 선택합니다.",
         rewardMultiplier: 1.25
+      }
+    ],
+
+    presets: [
+      {
+        id: "starter",
+        name: "초보 안정",
+        icon: "⬟",
+        description: "수호자와 심연 탄환으로 안정적인 기본 생존을 시작합니다.",
+        classId: "guardian",
+        weaponId: "abyssBullet",
+        zoneId: "riftGate",
+        challengeId: "normal",
+        runModeId: "survival",
+        eventId: "normal",
+        depth: 0
+      },
+      {
+        id: "fastClear",
+        name: "빠른 성장",
+        icon: "➤",
+        description: "추격자와 번개 사슬로 빠르게 레벨업과 처치를 노립니다.",
+        classId: "chaser",
+        weaponId: "lightningChain",
+        zoneId: "riftGate",
+        challengeId: "hungryAbyss",
+        runModeId: "survival",
+        eventId: "gemStorm"
+      },
+      {
+        id: "highRisk",
+        name: "고위험 보상",
+        icon: "✹",
+        description: "해금된 상위 선택지를 우선 사용해 보상 배율을 높입니다.",
+        classId: "abyssApostle",
+        weaponId: "voidMine",
+        zoneId: "stormRift",
+        challengeId: "glassSurvivor",
+        runModeId: "survival",
+        eventId: "abyssSurge"
       }
     ],
 
