@@ -11,6 +11,7 @@
   let lastHudSignature = "";
   let lastOverlaySignature = "";
   let activeLobbyModal = "";
+  let buildPanelOpen = false;
   const pointerDeadZone = 10;
   const pointerMaxDistance = 88;
 
@@ -462,6 +463,36 @@
     return button;
   }
 
+  function ensureGamePanel(id, className) {
+    let panel = document.getElementById(id);
+    const gameArea = elements.canvas ? elements.canvas.parentElement : null;
+
+    if (!panel && gameArea) {
+      panel = document.createElement("div");
+      panel.id = id;
+      panel.className = className;
+      gameArea.appendChild(panel);
+    }
+
+    return panel;
+  }
+
+  function ensureControlButton(id, text) {
+    let button = document.getElementById(id);
+    const controlBar = elements.pauseButton ? elements.pauseButton.parentElement : null;
+
+    if (!button && controlBar) {
+      button = document.createElement("button");
+      button.id = id;
+      button.type = "button";
+      button.className = "control-button";
+      button.textContent = text;
+      controlBar.appendChild(button);
+    }
+
+    return button;
+  }
+
   function ensureLobbyModal() {
     let modal = document.getElementById("lobbyModal");
     let title;
@@ -643,6 +674,137 @@
     };
   }
 
+  function collectBuildTags(run) {
+    const tags = {};
+    const weapon = findById(Data.weapons || [], run && run.selectedWeaponId, "abyssBullet");
+    const supports = Array.isArray(run && run.supportWeapons) ? run.supportWeapons : [];
+    const relics = Array.isArray(run && run.relics) ? run.relics : [];
+    const abilities = run && run.abilityLevels ? run.abilityLevels : {};
+    let key;
+
+    function addTags(item) {
+      const list = Array.isArray(item && item.tags) ? item.tags : [];
+      for (let i = 0; i < list.length; i += 1) {
+        tags[list[i]] = true;
+      }
+    }
+
+    addTags(weapon);
+    for (let i = 0; i < supports.length; i += 1) {
+      addTags(findById(Data.supportWeapons || [], supports[i].id, ""));
+    }
+    for (let i = 0; i < relics.length; i += 1) {
+      addTags(findById(Data.relics || [], relics[i].id, ""));
+    }
+    for (key in abilities) {
+      if (Object.prototype.hasOwnProperty.call(abilities, key) && abilities[key] > 0) {
+        addTags(findById(Data.abilities || [], key, ""));
+      }
+    }
+
+    return tags;
+  }
+
+  function getAbilityInsight(ability, run) {
+    const tags = Array.isArray(ability && ability.tags) ? ability.tags : [];
+    const buildTags = collectBuildTags(run);
+    const matches = [];
+    const details = [];
+    const currentLevel = safeInteger(run && run.abilityLevels && run.abilityLevels[ability.id], 0);
+    const maxLevel = safeInteger(ability && ability.maxLevel, 0);
+
+    for (let i = 0; i < tags.length; i += 1) {
+      if (buildTags[tags[i]]) {
+        matches.push(tags[i]);
+      }
+    }
+    if (ability && ability.weaponId) {
+      details.push("전용 강화");
+    }
+    if (ability && ability.requiredLevel) {
+      details.push("필요 Lv." + safeInteger(ability.requiredLevel, 1));
+    }
+    if (maxLevel > 0 && maxLevel < 99 && (ability.category || "") !== "evolution") {
+      details.push("현재 " + currentLevel + "/" + maxLevel);
+    }
+    if (matches.length > 0) {
+      details.push("시너지 " + matches.slice(0, 3).join(", "));
+    }
+    if ((ability && ability.category) === "evolution") {
+      details.push("진화 선택지");
+    }
+
+    return details.join(" · ");
+  }
+
+  function getMissionHudText(run) {
+    const missions = AS.State && AS.State.getRunMissions ? AS.State.getRunMissions(run) : [];
+    const objectives = Array.isArray(run && run.miniObjectives) ? run.miniObjectives : [];
+    let completed = 0;
+    let objectiveText = "";
+
+    for (let i = 0; i < missions.length; i += 1) {
+      if (missions[i].completed) {
+        completed += 1;
+      }
+    }
+    if (objectives.length > 0) {
+      const objective = objectives[0];
+      objectiveText = " · 봉화 " + Math.floor((safeNumber(objective.progress, 0) / Math.max(1, safeNumber(objective.target, 10))) * 100) + "%";
+    }
+
+    return "임무 " + completed + "/" + missions.length + objectiveText;
+  }
+
+  function renderBuildPanel() {
+    const panel = elements.buildPanel;
+    const run = getRun();
+    const weapon = findById(Data.weapons || [], run && run.selectedWeaponId, "abyssBullet");
+    const stats = AS.Game && AS.Game.getWeaponStats ? AS.Game.getWeaponStats(run) : {};
+    const supports = Array.isArray(run && run.supportWeapons) ? run.supportWeapons : [];
+    const relics = Array.isArray(run && run.relics) ? run.relics : [];
+    const ranking = AS.Game && AS.Game.getDamageRanking ? AS.Game.getDamageRanking(run, 4) : [];
+
+    if (!panel || !run) {
+      return;
+    }
+
+    panel.classList.toggle("is-hidden", !buildPanelOpen || run.mode !== (states.running || "running"));
+    if (!buildPanelOpen || run.mode !== (states.running || "running")) {
+      return;
+    }
+
+    panel.innerHTML = "";
+    const title = document.createElement("strong");
+    const close = document.createElement("button");
+    const body = document.createElement("div");
+    title.className = "build-title";
+    title.textContent = "빌드 현황";
+    close.type = "button";
+    close.className = "build-close";
+    close.textContent = "×";
+    close.addEventListener("click", function () {
+      buildPanelOpen = false;
+      lastHudSignature = "";
+      if (elements.buildButton) {
+        elements.buildButton.textContent = "빌드";
+      }
+      renderBuildPanel();
+    });
+    body.className = "build-list";
+    body.textContent = [
+      "무기: " + (weapon.name || "기본") + " · 피해 " + formatNumber(stats.damage || 0) + " · 쿨 " + safeNumber(stats.cooldown, 0).toFixed(2),
+      "보조: " + (supports.map(function (item) { return item.name + " Lv." + safeInteger(item.level, 1); }).join(", ") || "없음"),
+      "유물: " + (relics.map(function (item) { return item.name; }).join(", ") || "없음"),
+      "진화: " + (Object.keys(run.evolutions || {}).filter(function (key) { return run.evolutions[key]; }).join(", ") || "없음"),
+      "피해: " + (ranking.map(function (row) { return row.name + " " + formatNumber(row.damage); }).join(" / ") || "기록 없음"),
+      "목표: 완료 " + safeInteger(run.completedObjectiveCount, 0) + " · 실패 " + safeInteger(run.failedObjectiveCount, 0)
+    ].join("\n");
+    panel.appendChild(title);
+    panel.appendChild(close);
+    panel.appendChild(body);
+  }
+
   function renderLobbySummary(save) {
     const panel = elements.lobbySummaryPanel;
     const upgrades = save.upgrades || {};
@@ -661,10 +823,12 @@
     appendLobbySummaryButton(panel, "♛", "모드", selectedSummary(Data.runModes || [], save.selectedRunModeId, "survival"), "runMode");
     appendLobbySummaryButton(panel, "○", "도전", selectedSummary(Data.challenges || [], save.selectedChallengeId, "normal"), "challenge");
     appendLobbySummaryButton(panel, "◇", "이벤트", selectedSummary(Data.events || [], save.selectedEventId, "normal"), "event");
+    appendLobbySummaryButton(panel, "★", "추천", { name: "조합 프리셋", description: "초보 안정, 빠른 성장, 고위험 보상 조합을 적용합니다." }, "preset");
     appendLobbySummaryButton(panel, "⬢", "숙련도", getMasterySummary(save), "mastery");
     appendLobbySummaryButton(panel, "◆", "성장", { name: "보유 " + safeInteger(save.shards, 0), description: "체력 " + safeInteger(upgrades.vitality, 0) + " · 공격 " + safeInteger(upgrades.power, 0) + " · 수집 " + safeInteger(upgrades.growth, 0) }, "upgrade");
     appendLobbySummaryButton(panel, "▣", "해금", getUnlockSummary(), "unlock");
     appendLobbySummaryButton(panel, "✓", "임무", { name: "이번 런 3개", description: "누적 완료 " + safeInteger(history.totalCompleted, 0) + " · 보상 " + safeInteger(history.totalReward, 0) }, "mission");
+    appendLobbySummaryButton(panel, "⚙", "설정", { name: save.settings && save.settings.assistMode === "assist" ? "편의 모드" : (save.settings && save.settings.assistMode === "challenge" ? "도전 모드" : "표준 모드"), description: "난이도 보정과 표시 옵션을 조정합니다." }, "settings");
   }
 
   function openLobbyModal(type) {
@@ -773,6 +937,79 @@
     }
   }
 
+  function renderPresetPanel(panel) {
+    const presets = Array.isArray(Data.presets) ? Data.presets : [];
+    const list = document.createElement("div");
+
+    list.className = "choice-list";
+    panel.appendChild(list);
+
+    for (let i = 0; i < presets.length; i += 1) {
+      const preset = presets[i];
+      const button = document.createElement("button");
+      const body = document.createElement("span");
+      const name = document.createElement("strong");
+      const description = document.createElement("span");
+
+      button.type = "button";
+      button.className = "choice-button";
+      body.className = "choice-body";
+      name.textContent = preset.name;
+      description.textContent = preset.description;
+      body.appendChild(name);
+      body.appendChild(description);
+      button.appendChild(createIcon(preset.icon, "choice-icon", preset.id, "reward"));
+      button.appendChild(body);
+      button.addEventListener("click", function () {
+        if (AS.State && AS.State.applyPreset) {
+          AS.State.applyPreset(preset.id);
+          closeLobbyModal();
+          AS.UI.renderStartOptions();
+        }
+      });
+      list.appendChild(button);
+    }
+  }
+
+  function renderSettingsPanel(panel) {
+    const save = getSave();
+    const settings = save.settings || {};
+    const modes = [
+      { id: "normal", name: "표준", description: "기본 난이도와 보상" },
+      { id: "assist", name: "편의", description: "적 약화, 보상 -10%" },
+      { id: "challenge", name: "도전", description: "적 강화, 보상 +8%" }
+    ];
+    const list = document.createElement("div");
+
+    list.className = "choice-list";
+    panel.appendChild(list);
+
+    for (let i = 0; i < modes.length; i += 1) {
+      const mode = modes[i];
+      const button = document.createElement("button");
+      const body = document.createElement("span");
+      const name = document.createElement("strong");
+      const description = document.createElement("span");
+
+      button.type = "button";
+      button.className = mode.id === (settings.assistMode || "normal") ? "choice-button is-selected" : "choice-button";
+      body.className = "choice-body";
+      name.textContent = mode.name + " 모드";
+      description.textContent = mode.description;
+      body.appendChild(name);
+      body.appendChild(description);
+      button.appendChild(createIcon(mode.id === "assist" ? "✚" : (mode.id === "challenge" ? "◆" : "○"), "choice-icon", mode.id, "challenge"));
+      button.appendChild(body);
+      button.addEventListener("click", function () {
+        if (AS.State && AS.State.setSetting) {
+          AS.State.setSetting("assistMode", mode.id);
+          AS.UI.renderStartOptions();
+        }
+      });
+      list.appendChild(button);
+    }
+  }
+
   function renderLobbyModal() {
     const save = getSave();
     const body = elements.lobbyModalBody;
@@ -836,6 +1073,9 @@
         }
         closeLobbyModal();
       }, "event");
+    } else if (activeLobbyModal === "preset") {
+      title = "추천 조합";
+      renderPresetPanel(body);
     } else if (activeLobbyModal === "mastery") {
       title = "숙련도";
       renderMasteryPanel(body);
@@ -848,6 +1088,9 @@
     } else if (activeLobbyModal === "mission") {
       title = "임무";
       renderMissionPanel(body);
+    } else if (activeLobbyModal === "settings") {
+      title = "설정";
+      renderSettingsPanel(body);
     }
 
     setText(elements.lobbyModalTitle, title);
@@ -1070,6 +1313,7 @@
 
     lastOverlaySignature = "";
     lastHudSignature = "";
+    buildPanelOpen = false;
     AS.State.startRun();
     AS.UI.hideOverlay();
   }
@@ -1085,6 +1329,7 @@
     }
     lastOverlaySignature = "";
     lastHudSignature = "";
+    buildPanelOpen = false;
     if (AS.UI && AS.UI.renderStartOptions) {
       AS.UI.renderStartOptions();
     }
@@ -1287,6 +1532,9 @@
       }
       elements.mapChoiceList = findElement("mapChoiceList");
       elements.lobbySummaryPanel = ensurePanel("lobbySummaryPanel", "lobby-summary");
+      elements.missionHud = ensureGamePanel("missionHud", "mission-hud");
+      elements.buildPanel = ensureGamePanel("buildPanel", "build-panel is-hidden");
+      elements.buildButton = ensureControlButton("buildButton", "빌드");
       ensureLobbyModal();
       elements.pauseRestartButton = ensurePanelButton(elements.startPanel, "pauseRestartButton", "재시작", "secondary-button");
       elements.pauseLobbyButton = ensurePanelButton(elements.startPanel, "pauseLobbyButton", "로비로", "secondary-button");
@@ -1312,7 +1560,8 @@
       const timeValue = formatTime(run ? run.remainingTime : safeNumber((Data.game || {}).runDuration, 300));
       const killValue = Math.max(0, Math.floor(safeNumber(run && run.kills, 0)));
       const modeValue = run && run.mode ? run.mode : "";
-      const hudSignature = [hp, maxHp, exp, expToNext, timeValue, killValue, modeValue].join("|");
+      const missionText = run && run.mode === (states.running || "running") ? getMissionHudText(run) : "";
+      const hudSignature = [hp, maxHp, exp, expToNext, timeValue, killValue, modeValue, missionText, buildPanelOpen].join("|");
 
       if (hudSignature === lastHudSignature) {
         return;
@@ -1339,9 +1588,22 @@
         const isRunning = run && run.mode === (states.running || "running");
         elements.restartButton.style.display = isRunning ? "none" : "";
         if (elements.restartButton.parentElement) {
-          elements.restartButton.parentElement.classList.toggle("is-single", isRunning);
+          elements.restartButton.parentElement.classList.toggle("is-single", false);
         }
       }
+
+      if (elements.buildButton) {
+        const isRunning = run && run.mode === (states.running || "running");
+        elements.buildButton.style.display = isRunning ? "" : "none";
+        elements.buildButton.textContent = buildPanelOpen ? "닫기" : "빌드";
+      }
+
+      if (elements.missionHud) {
+        elements.missionHud.textContent = missionText;
+        elements.missionHud.classList.toggle("is-hidden", !missionText);
+      }
+
+      renderBuildPanel();
     },
 
     showOverlay: function () {
@@ -1464,9 +1726,10 @@
     },
 
     showLevelUp: function (abilities) {
+      const run = getRun();
       const signature = abilities.map(function (ability) {
         return ability.id;
-      }).join("|");
+      }).join("|") + "|" + safeInteger(run && run.rerollsRemaining, 0) + "|" + safeInteger(run && run.excludesRemaining, 0) + "|" + JSON.stringify(run && run.pinnedAbilityIds ? run.pinnedAbilityIds : {});
 
       if (!elements.abilityList) {
         return;
@@ -1479,18 +1742,46 @@
       lastAbilitySignature = signature;
       elements.abilityList.innerHTML = "";
 
+      const controls = document.createElement("div");
+      const reroll = document.createElement("button");
+      const controlText = document.createElement("span");
+      controls.className = "choice-tools choice-tools-top";
+      reroll.type = "button";
+      reroll.className = "mini-tool-button";
+      reroll.textContent = "리롤 " + safeInteger(run && run.rerollsRemaining, 0);
+      reroll.disabled = !run || safeInteger(run.rerollsRemaining, 0) <= 0;
+      controlText.className = "choice-help";
+      controlText.textContent = "고정은 리롤 때 유지, 제외는 이번 런 선택지에서 제거";
+      reroll.addEventListener("click", function () {
+        if (AS.Game && AS.Game.rerollAbilityChoices) {
+          AS.Game.rerollAbilityChoices();
+          lastAbilitySignature = "";
+          lastOverlaySignature = "";
+          AS.UI.showOverlay();
+        }
+      });
+      controls.appendChild(reroll);
+      controls.appendChild(controlText);
+      elements.abilityList.appendChild(controls);
+
       for (let i = 0; i < abilities.length; i += 1) {
         const ability = abilities[i];
+        const card = document.createElement("div");
         const button = document.createElement("button");
         const icon = createIcon(ability.icon, "ability-icon", ability.supportId || ability.id, ability.category);
         const body = document.createElement("span");
         const tag = document.createElement("em");
         const name = document.createElement("strong");
         const description = document.createElement("span");
+        const insight = document.createElement("span");
+        const tools = document.createElement("div");
+        const pin = document.createElement("button");
+        const exclude = document.createElement("button");
         const category = ability.category || "normal";
         const rarity = rarityForItem(ability, category);
         const meta = rarityMeta(rarity);
 
+        card.className = "ability-card";
         button.className = category === "evolution" ? "ability-button is-evolution" : (category === "relic" ? "ability-button is-relic" : "ability-button");
         button.type = "button";
         button.dataset.abilityId = ability.id;
@@ -1503,9 +1794,14 @@
         tag.textContent = meta.label || "일반";
         name.textContent = ability.name;
         description.textContent = shortenDescription(ability.description);
+        insight.className = "ability-insight";
+        insight.textContent = getAbilityInsight(ability, run);
         body.appendChild(tag);
         body.appendChild(name);
         body.appendChild(description);
+        if (insight.textContent) {
+          body.appendChild(insight);
+        }
         button.appendChild(icon);
         button.appendChild(body);
         button.addEventListener("click", function () {
@@ -1513,7 +1809,35 @@
             AS.Game.applyAbility(ability.id);
           }
         });
-        elements.abilityList.appendChild(button);
+        tools.className = "choice-tools";
+        pin.type = "button";
+        pin.className = run && run.pinnedAbilityIds && run.pinnedAbilityIds[ability.id] ? "mini-tool-button is-active" : "mini-tool-button";
+        pin.textContent = "고정";
+        pin.addEventListener("click", function () {
+          if (AS.Game && AS.Game.togglePinnedChoice) {
+            AS.Game.togglePinnedChoice(ability.id);
+            lastAbilitySignature = "";
+            lastOverlaySignature = "";
+            AS.UI.showOverlay();
+          }
+        });
+        exclude.type = "button";
+        exclude.className = "mini-tool-button";
+        exclude.textContent = "제외 " + safeInteger(run && run.excludesRemaining, 0);
+        exclude.disabled = !run || safeInteger(run.excludesRemaining, 0) <= 0;
+        exclude.addEventListener("click", function () {
+          if (AS.Game && AS.Game.excludeAbilityChoice) {
+            AS.Game.excludeAbilityChoice(ability.id);
+            lastAbilitySignature = "";
+            lastOverlaySignature = "";
+            AS.UI.showOverlay();
+          }
+        });
+        tools.appendChild(pin);
+        tools.appendChild(exclude);
+        card.appendChild(button);
+        card.appendChild(tools);
+        elements.abilityList.appendChild(card);
       }
     },
 
@@ -1582,6 +1906,8 @@
         safeInteger(save.upgrades && save.upgrades.masteryTraining, 0),
         safeInteger(save.upgrades && save.upgrades.combatSense, 0),
         safeInteger(save.upgrades && save.upgrades.abyssAdaptation, 0),
+        safeInteger(save.upgrades && save.upgrades.choiceControl, 0),
+        save.settings && save.settings.assistMode,
         JSON.stringify(save.mastery || {}),
         JSON.stringify(save.unlocks || {}),
         JSON.stringify(save.missions || {})
@@ -1642,6 +1968,7 @@
         "◈ 신규 해금: " + unlocks,
         formatEndgameRecord(run, save),
         formatPathHistory(run),
+        "◎ 봉화 목표: 완료 " + safeInteger(run.completedObjectiveCount, 0) + " / 실패 " + safeInteger(run.failedObjectiveCount, 0) + " · 목표 보상 x" + safeNumber(run.objectiveRewardMultiplier, 1).toFixed(2),
         formatDamageRanking(run),
         "◆ 엘리트 처치: " + safeInteger(run.eliteKills, 0),
         "◆ 유물: " + relics,
@@ -1666,6 +1993,12 @@
       bindButton(elements.pauseButton, togglePause);
       bindButton(elements.restartButton, restartGame);
       bindButton(elements.pauseRestartButton, restartGame);
+      bindButton(elements.buildButton, function () {
+        buildPanelOpen = !buildPanelOpen;
+        lastHudSignature = "";
+        elements.buildButton.textContent = buildPanelOpen ? "닫기" : "빌드";
+        renderBuildPanel();
+      });
       bindButton(elements.pauseLobbyButton, returnToLobby);
       bindButton(elements.retryButton, restartGame);
       bindButton(elements.gameOverLobbyButton, returnToLobby);
