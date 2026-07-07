@@ -70,7 +70,8 @@
         growth: 0,
         masteryTraining: 0,
         combatSense: 0,
-        abyssAdaptation: 0
+        abyssAdaptation: 0,
+        choiceControl: 0
       },
       abyss: {
         selectedDepth: 0,
@@ -126,7 +127,8 @@
       },
       settings: {
         reducedEffects: false,
-        showDamageNumbers: true
+        showDamageNumbers: true,
+        assistMode: "normal"
       }
     };
   }
@@ -140,7 +142,8 @@
       growth: Math.min(10, safeInteger(source.growth, 0)),
       masteryTraining: Math.min(10, safeInteger(source.masteryTraining, 0)),
       combatSense: Math.min(10, safeInteger(source.combatSense, 0)),
-      abyssAdaptation: Math.min(10, safeInteger(source.abyssAdaptation, 0))
+      abyssAdaptation: Math.min(10, safeInteger(source.abyssAdaptation, 0)),
+      choiceControl: Math.min(3, safeInteger(source.choiceControl, 0))
     };
   }
 
@@ -360,10 +363,12 @@
 
   function sanitizeSettingsMap(settings) {
     const source = settings && typeof settings === "object" ? settings : {};
+    const assistMode = source.assistMode === "assist" ? "assist" : (source.assistMode === "challenge" ? "challenge" : "normal");
 
     return {
       reducedEffects: !!source.reducedEffects,
-      showDamageNumbers: source.showDamageNumbers !== false
+      showDamageNumbers: source.showDamageNumbers !== false,
+      assistMode: assistMode
     };
   }
 
@@ -463,6 +468,20 @@
     result.relicEffectMultiplier = multiplyModifier(challengeModifiers.relicEffectMultiplier, eventModifiers.relicEffectMultiplier);
     result.healOnKill = safeNumber(challengeModifiers.healOnKill, 0) + safeNumber(eventModifiers.healOnKill, 0);
     result.relicOfferBonus = safeInteger(challengeModifiers.relicOfferBonus, 0) + safeInteger(eventModifiers.relicOfferBonus, 0);
+
+    if (save && save.settings && save.settings.assistMode === "assist") {
+      result.enemyHpMultiplier = multiplyModifier(result.enemyHpMultiplier, 0.92);
+      result.enemyDamageMultiplier = multiplyModifier(result.enemyDamageMultiplier, 0.9);
+      result.enemySpeedMultiplier = multiplyModifier(result.enemySpeedMultiplier, 0.94);
+      result.spawnIntervalMultiplier = multiplyModifier(result.spawnIntervalMultiplier, 1.06);
+      result.rewardMultiplierPenalty = 0.9;
+    } else if (save && save.settings && save.settings.assistMode === "challenge") {
+      result.enemyHpMultiplier = multiplyModifier(result.enemyHpMultiplier, 1.08);
+      result.enemyDamageMultiplier = multiplyModifier(result.enemyDamageMultiplier, 1.08);
+      result.enemySpeedMultiplier = multiplyModifier(result.enemySpeedMultiplier, 1.04);
+      result.spawnIntervalMultiplier = multiplyModifier(result.spawnIntervalMultiplier, 0.96);
+      result.rewardMultiplierBonus = 1.08;
+    }
 
     return result;
   }
@@ -826,7 +845,7 @@
     const abyssModifiers = getAbyssModifiers(selectedDepth, save);
     const runDuration = isBossRush ? Math.max(60, safeNumber(game.bossRushRunDuration, 240)) : Math.max(1, safeNumber(modifiers.runDuration, safeNumber(game.runDuration, 180)));
     const bossSpawnTime = isBossRush ? Math.max(0.2, safeNumber(game.bossRushSpawnDelay, 1.2)) : Math.max(1, safeNumber(modifiers.bossSpawnTime, safeNumber(game.bossSpawnTime, 120)));
-    const rewardMultiplier = clamp(safeNumber(challenge.rewardMultiplier, 1) * safeNumber(runMode.rewardMultiplier, 1) * safeNumber(event.rewardMultiplier, 1) * safeNumber(zone.rewardMultiplier, 1) * safeNumber(abyssModifiers.rewardMultiplier, 1) * getRewardMasteryMultiplier(save), 0, 5);
+    const rewardMultiplier = clamp(safeNumber(challenge.rewardMultiplier, 1) * safeNumber(runMode.rewardMultiplier, 1) * safeNumber(event.rewardMultiplier, 1) * safeNumber(zone.rewardMultiplier, 1) * safeNumber(abyssModifiers.rewardMultiplier, 1) * safeNumber(modifiers.rewardMultiplierPenalty, 1) * safeNumber(modifiers.rewardMultiplierBonus, 1) * getRewardMasteryMultiplier(save), 0, 5);
     const viewportWidth = Math.max(1, safeNumber(game.width, 360));
     const viewportHeight = Math.max(1, safeNumber(game.height, 560));
     const worldWidth = Math.max(viewportWidth, safeNumber(game.worldWidth, viewportWidth));
@@ -917,6 +936,16 @@
       relicChoices: [],
       relicOfferCount: 0,
       buildBonuses: [],
+      rerollsRemaining: 1 + safeInteger((save.upgrades || {}).choiceControl, 0),
+      excludesRemaining: safeInteger((save.upgrades || {}).choiceControl, 0),
+      pinnedAbilityIds: {},
+      excludedAbilityIds: {},
+      miniObjectives: [],
+      objectiveSpawnCount: 0,
+      nextObjectiveTime: isBossRush ? 0 : Math.max(1, safeNumber(game.miniObjectiveFirstTime, 55)),
+      objectiveRewardMultiplier: 1,
+      completedObjectiveCount: 0,
+      failedObjectiveCount: 0,
       mapChoiceTimes: isBossRush ? [] : getMapChoiceTimes(runDuration, bossSpawnTime),
       mapChoiceIndex: 0,
       mapChoicesTriggered: {},
@@ -1440,6 +1469,53 @@
       return save;
     },
 
+    setSetting: function (key, value) {
+      const save = this.getSave();
+      const settings = sanitizeSettingsMap(save.settings);
+
+      if (key === "assistMode") {
+        settings.assistMode = value === "assist" ? "assist" : (value === "challenge" ? "challenge" : "normal");
+      } else if (key === "showDamageNumbers") {
+        settings.showDamageNumbers = value !== false;
+      } else if (key === "reducedEffects") {
+        settings.reducedEffects = !!value;
+      }
+
+      save.settings = settings;
+      this.writeSave();
+      return save;
+    },
+
+    applyPreset: function (presetId) {
+      const save = this.getSave();
+      const preset = findById(Data.presets, presetId, "starter");
+
+      if (preset.classId && isUnlocked(save, "classes", preset.classId)) {
+        save.selectedClassId = preset.classId;
+      }
+      if (preset.weaponId && isUnlocked(save, "weapons", preset.weaponId)) {
+        save.selectedWeaponId = preset.weaponId;
+      }
+      if (preset.zoneId && isUnlocked(save, "zones", preset.zoneId)) {
+        save.selectedZoneId = preset.zoneId;
+      }
+      if (preset.challengeId) {
+        save.selectedChallengeId = findById(Data.challenges, preset.challengeId, "normal").id || "normal";
+      }
+      if (preset.runModeId) {
+        save.selectedRunModeId = findById(Data.runModes, preset.runModeId, "survival").id || "survival";
+      }
+      if (preset.eventId) {
+        save.selectedEventId = findById(Data.events, preset.eventId, "normal").id || "normal";
+      }
+      if (Object.prototype.hasOwnProperty.call(preset, "depth")) {
+        save.abyss = sanitizeAbyssMap(Object.assign({}, save.abyss, { selectedDepth: preset.depth }));
+      }
+
+      this.writeSave();
+      return save;
+    },
+
     getUpgradeCost: function (upgradeId) {
       const save = this.getSave();
       const currentLevel = safeInteger((save.upgrades || {})[upgradeId], 0);
@@ -1451,6 +1527,9 @@
       }
       if (upgradeId === "abyssAdaptation") {
         return 50 + currentLevel * 22;
+      }
+      if (upgradeId === "choiceControl") {
+        return 55 + currentLevel * 24;
       }
       return 10 + currentLevel * 8;
     },
