@@ -729,6 +729,15 @@
       enemy.summonTimer = 3.6;
       enemy.color = "#b98cff";
     }
+
+    pushEffect(run, {
+      type: "warningCircle",
+      x: safeNumber(enemy.x, 0),
+      y: safeNumber(enemy.y, 0),
+      radius: safeNumber(enemy.radius, 10) + 16,
+      life: 0.55,
+      maxLife: 0.55
+    });
   }
 
   function chooseEnemyType(run) {
@@ -1756,6 +1765,8 @@
   function chooseRelics(run, count) {
     const relics = Data.relics || [];
     const owned = {};
+    const excluded = run && run.excludedAbilityIds ? run.excludedAbilityIds : {};
+    const pinned = run && run.pinnedAbilityIds ? run.pinnedAbilityIds : {};
     const pool = [];
     const result = [];
     const selectedDepth = safeInteger(run && run.selectedDepth, 0);
@@ -1765,8 +1776,24 @@
     }
 
     for (let i = 0; i < relics.length; i += 1) {
-      if (relics[i] && !owned[relics[i].id] && selectedDepth >= safeInteger(relics[i].minDepth, 0)) {
+      if (relics[i] && !owned[relics[i].id] && !excluded[relics[i].id] && selectedDepth >= safeInteger(relics[i].minDepth, 0)) {
         pool.push(relics[i]);
+      }
+    }
+
+    for (let i = pool.length - 1; i >= 0 && result.length < count; i -= 1) {
+      if (pool[i] && pinned[pool[i].id]) {
+        const relic = pool.splice(i, 1)[0];
+        result.push({
+          id: relic.id,
+          name: relic.name,
+          description: relic.description,
+          rarity: relic.rarity || "일반",
+          category: "relic",
+          type: "relic",
+          tags: relic.tags || [],
+          effect: relic.effect || {}
+        });
       }
     }
 
@@ -1780,6 +1807,7 @@
         rarity: relic.rarity || "일반",
         category: "relic",
         type: "relic",
+        tags: relic.tags || [],
         effect: relic.effect || {}
       });
     }
@@ -1808,6 +1836,7 @@
     const supports = Array.isArray(Data.supportWeapons) ? Data.supportWeapons : [];
     const limits = getSupportWeaponLimits();
     const ownedCount = run && Array.isArray(run.supportWeapons) ? run.supportWeapons.length : 0;
+    const excluded = run && run.excludedAbilityIds ? run.excludedAbilityIds : {};
     const pool = [];
     const result = [];
 
@@ -1816,10 +1845,16 @@
       const owned = findRunSupportWeapon(run, supportData.id);
       if (owned) {
         if (safeInteger(owned.level, 1) < Math.min(limits.maxLevel, safeInteger(supportData.maxLevel, limits.maxLevel))) {
-          pool.push(createSupportChoice(run, supportData, true));
+          const upgradeChoice = createSupportChoice(run, supportData, true);
+          if (!excluded[upgradeChoice.id]) {
+            pool.push(upgradeChoice);
+          }
         }
       } else if (ownedCount < limits.maxSlots) {
-        pool.push(createSupportChoice(run, supportData, false));
+        const supportChoice = createSupportChoice(run, supportData, false);
+        if (!excluded[supportChoice.id]) {
+          pool.push(supportChoice);
+        }
       }
     }
 
@@ -1948,6 +1983,92 @@
     }
   }
 
+  function spawnMiniObjective(run, forced) {
+    const game = Data.game || {};
+    const count = safeInteger(run && run.objectiveSpawnCount, 0);
+    const maxCount = Math.max(0, safeInteger(game.miniObjectiveCount, 2));
+    const player = run && run.player ? run.player : null;
+    const radius = Math.max(24, safeNumber(game.miniObjectiveRadius, 48));
+    const width = getWorldWidth(run);
+    const height = getWorldHeight(run);
+    const angle = Math.random() * Math.PI * 2;
+    const distance = forced ? 72 : 130;
+
+    if (!run || !player || isBossRushRun(run) || (!forced && count >= maxCount)) {
+      return null;
+    }
+    if (!Array.isArray(run.miniObjectives)) {
+      run.miniObjectives = [];
+    }
+
+    const objective = {
+      id: "beacon-" + Date.now() + "-" + Math.floor(Math.random() * 10000),
+      type: "beacon",
+      name: "심연 봉화",
+      x: clamp(safeNumber(player.x, width / 2) + Math.cos(angle) * distance, radius, width - radius),
+      y: clamp(safeNumber(player.y, height / 2) + Math.sin(angle) * distance, radius, height - radius),
+      radius: radius,
+      progress: 0,
+      target: Math.max(3, safeNumber(game.miniObjectiveHoldTime, 10)),
+      life: forced ? 42 : 36,
+      completed: false
+    };
+
+    run.miniObjectives.push(objective);
+    run.objectiveSpawnCount = count + 1;
+    run.message = "심연 봉화가 열렸습니다";
+    run.messageTimer = 2;
+    return objective;
+  }
+
+  function updateMiniObjectives(run, delta) {
+    const game = Data.game || {};
+    const player = run && run.player ? run.player : null;
+    const objectives = Array.isArray(run && run.miniObjectives) ? run.miniObjectives : [];
+
+    if (!run || !player || isBossRushRun(run)) {
+      return;
+    }
+
+    if (safeNumber(run.nextObjectiveTime, 0) > 0 && safeNumber(run.time, 0) >= safeNumber(run.nextObjectiveTime, 0)) {
+      spawnMiniObjective(run, false);
+      run.nextObjectiveTime = safeNumber(run.time, 0) + Math.max(15, safeNumber(game.miniObjectiveInterval, 95));
+    }
+
+    for (let i = objectives.length - 1; i >= 0; i -= 1) {
+      const objective = objectives[i];
+      const radius = Math.max(1, safeNumber(objective.radius, 48));
+      const inside = distanceSquared(player, objective) <= Math.pow(radius + safeNumber(player.radius, 12), 2);
+
+      objective.life = Math.max(0, safeNumber(objective.life, 0) - delta);
+      if (inside) {
+        objective.progress = Math.min(safeNumber(objective.target, 10), safeNumber(objective.progress, 0) + delta);
+        player.hp = Math.min(safeNumber(player.maxHp, 1), safeNumber(player.hp, 0) + 0.7 * delta);
+      }
+
+      if (safeNumber(objective.progress, 0) >= safeNumber(objective.target, 10)) {
+        run.completedObjectiveCount = safeInteger(run.completedObjectiveCount, 0) + 1;
+        run.objectiveRewardMultiplier = safeNumber(run.objectiveRewardMultiplier, 1) * safeNumber(game.miniObjectiveRewardMultiplier, 1.08);
+        run.pathRewardMultiplier = clamp(safeNumber(run.pathRewardMultiplier, 1) * safeNumber(game.miniObjectiveRewardMultiplier, 1.08), 0.1, safeNumber((Data.map || {}).rewardMultiplierMax, 1.6));
+        gainExp(run, 24 + safeInteger(run.selectedDepth, 0) * 2);
+        run.message = "봉화 완료 · 보상 증가";
+        run.messageTimer = 2;
+        pushEffect(run, {
+          type: "objective",
+          x: safeNumber(objective.x, 0),
+          y: safeNumber(objective.y, 0),
+          radius: radius + 24,
+          life: 0.5,
+          maxLife: 0.5
+        });
+        objectives.splice(i, 1);
+      } else if (safeNumber(objective.life, 0) <= 0) {
+        run.failedObjectiveCount = safeInteger(run.failedObjectiveCount, 0) + 1;
+        objectives.splice(i, 1);
+      }
+    }
+  }
+
   function applyRoomImmediateEffect(run, room) {
     const effect = room && room.immediateEffect;
 
@@ -1982,6 +2103,12 @@
       return;
     }
 
+    if (effect === "objective") {
+      spawnMiniObjective(run, true);
+      run.mode = states.running || "running";
+      return;
+    }
+
     run.mode = states.running || "running";
   }
 
@@ -1991,6 +2118,8 @@
     const limits = getSupportWeaponLimits();
     const pool = [];
     const result = [];
+    const excluded = run && run.excludedAbilityIds ? run.excludedAbilityIds : {};
+    const pinned = run && run.pinnedAbilityIds ? run.pinnedAbilityIds : {};
 
     for (let i = 0; i < abilities.length; i += 1) {
       const ability = abilities[i];
@@ -2000,6 +2129,9 @@
       const requiredLevel = Math.max(1, Math.floor(safeNumber(ability.requiredLevel, 1)));
 
       if (ability.weaponId && (!run || ability.weaponId !== run.selectedWeaponId)) {
+        continue;
+      }
+      if (excluded[ability.id]) {
         continue;
       }
 
@@ -2012,6 +2144,13 @@
       }
 
       pool.push(ability);
+    }
+
+    for (let i = 0; i < abilities.length && result.length < count; i += 1) {
+      if (abilities[i] && pinned[abilities[i].id] && !excluded[abilities[i].id] && pool.indexOf(abilities[i]) >= 0) {
+        result.push(abilities[i]);
+        pool.splice(pool.indexOf(abilities[i]), 1);
+      }
     }
 
     if (supportChoices.length > 0 && (Math.random() < limits.offerChance || pool.length < count)) {
@@ -2028,6 +2167,44 @@
     }
 
     return result;
+  }
+
+  function regenerateChoices(run) {
+    let choices;
+    const pinned = run && run.pinnedAbilityIds ? run.pinnedAbilityIds : {};
+    const pinnedChoices = [];
+
+    if (!run) {
+      return [];
+    }
+
+    if (Array.isArray(run.pendingAbilities)) {
+      for (let i = 0; i < run.pendingAbilities.length; i += 1) {
+        if (run.pendingAbilities[i] && pinned[run.pendingAbilities[i].id]) {
+          pinnedChoices.push(run.pendingAbilities[i]);
+        }
+      }
+    }
+
+    if (Array.isArray(run.relicChoices) && run.relicChoices.length > 0) {
+      choices = chooseRelics(run, 3);
+      if (choices.length > 0) {
+        choices = pinnedChoices.concat(choices.filter(function (choice) {
+          return !pinned[choice.id];
+        })).slice(0, 3);
+        run.relicChoices = choices;
+        run.pendingAbilities = choices;
+        return choices;
+      }
+    }
+
+    choices = chooseAbilities(Data.abilities || [], 3);
+    choices = pinnedChoices.concat(choices.filter(function (choice) {
+      return !pinned[choice.id];
+    })).slice(0, 3);
+    run.relicChoices = [];
+    run.pendingAbilities = choices;
+    return choices;
   }
 
   function ensureOrbital(run) {
@@ -2413,6 +2590,16 @@
         boss.chargeDirX = dir.x;
         boss.chargeDirY = dir.y;
         boss.chargePrepareTimer = safeNumber(pattern.chargePrepareTime, 0.6);
+        pushEffect(run, {
+          type: "warningLine",
+          fromX: safeNumber(boss.x, 0),
+          fromY: safeNumber(boss.y, 0),
+          toX: safeNumber(boss.x, 0) + dir.x * 220,
+          toY: safeNumber(boss.y, 0) + dir.y * 220,
+          lineWidth: safeNumber(boss.radius, 32) * 1.1,
+          life: safeNumber(pattern.chargePrepareTime, 0.6),
+          maxLife: safeNumber(pattern.chargePrepareTime, 0.6)
+        });
         run.message = "보스 돌진";
         run.messageTimer = 0.9;
       }
@@ -2451,9 +2638,28 @@
           }
         }
         boss.shockwaveTimer = boss.phaseTwo ? 3.8 : 5.2;
+        boss.shockwaveWarned = false;
+      } else if (hasBossPattern(boss, "shockwave") && boss.shockwaveTimer <= 0.65 && !boss.shockwaveWarned) {
+        boss.shockwaveWarned = true;
+        pushEffect(run, {
+          type: "warningCircle",
+          x: safeNumber(boss.x, 0),
+          y: safeNumber(boss.y, 0),
+          radius: boss.phaseTwo ? 124 : 96,
+          life: 0.65,
+          maxLife: 0.65
+        });
       }
 
       if (hasBossPattern(boss, "stormAura") && boss.stormAuraTimer <= 0) {
+        pushEffect(run, {
+          type: "warningCircle",
+          x: safeNumber(player.x, 0),
+          y: safeNumber(player.y, 0),
+          radius: boss.phaseTwo ? 34 : 28,
+          life: 0.16,
+          maxLife: 0.16
+        });
         pushEffect(run, {
           type: "lightning",
           fromX: safeNumber(boss.x, 0),
@@ -3031,6 +3237,54 @@
       return run;
     },
 
+    rerollAbilityChoices: function () {
+      const run = AS.State.getRun();
+
+      if (!run || run.mode !== (states.levelup || "levelup") || safeInteger(run.rerollsRemaining, 0) <= 0) {
+        return run;
+      }
+
+      run.rerollsRemaining = Math.max(0, safeInteger(run.rerollsRemaining, 0) - 1);
+      regenerateChoices(run);
+      return run;
+    },
+
+    togglePinnedChoice: function (abilityId) {
+      const run = AS.State.getRun();
+
+      if (!run || !abilityId) {
+        return run;
+      }
+      if (!run.pinnedAbilityIds) {
+        run.pinnedAbilityIds = {};
+      }
+      if (run.pinnedAbilityIds[abilityId]) {
+        delete run.pinnedAbilityIds[abilityId];
+      } else {
+        run.pinnedAbilityIds[abilityId] = true;
+      }
+      return run;
+    },
+
+    excludeAbilityChoice: function (abilityId) {
+      const run = AS.State.getRun();
+
+      if (!run || !abilityId || safeInteger(run.excludesRemaining, 0) <= 0) {
+        return run;
+      }
+      if (!run.excludedAbilityIds) {
+        run.excludedAbilityIds = {};
+      }
+      if (!run.pinnedAbilityIds) {
+        run.pinnedAbilityIds = {};
+      }
+      run.excludedAbilityIds[abilityId] = true;
+      delete run.pinnedAbilityIds[abilityId];
+      run.excludesRemaining = Math.max(0, safeInteger(run.excludesRemaining, 0) - 1);
+      regenerateChoices(run);
+      return run;
+    },
+
     update: function (run, delta) {
       const game = Data.game || {};
       const safeDelta = clamp(safeNumber(delta, 0), 0, 0.05);
@@ -3057,6 +3311,7 @@
       updateSpawning(run, safeDelta);
       updateEnemies(run, safeDelta);
       updateBossPatterns(run, safeDelta);
+      updateMiniObjectives(run, safeDelta);
       if (run.mode !== (states.running || "running")) {
         return;
       }
