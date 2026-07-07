@@ -1,4 +1,4 @@
-const CACHE_NAME = "abyss-survivor-v10.0.2";
+const CACHE_NAME = "abyss-survivor-v10.1.0";
 const ASSETS = [
   "./",
   "./index.html",
