@@ -1,3 +1,42 @@
+Abyss Survivor v10.2.0
+
+v10.2.0 모바일 앱 설치 PWA
+- manifest에 192px/512px PNG 및 maskable 아이콘 등록
+- iPhone/iPad용 180px apple-touch-icon 추가
+- Android Chrome/Edge의 beforeinstallprompt 기반 로비 설치 버튼 추가
+- iOS Safari의 공유 메뉴·홈 화면 추가 안내 추가
+- standalone 실행 중 설치 버튼 자동 숨김
+- 설치 관련 파일을 오프라인 캐시에 포함하고 캐시명을 `abyss-survivor-v10.2.0`으로 갱신
+- 내부 브라우저 테스트 12개 통과
+
+Abyss Survivor v10.1.3
+
+v10.1.3 전투 가독성 / 선택 카드 정보 개선
+- 일반 적은 원형, 고속 적은 마름모, 탱크는 사각형, 보스는 육각형으로 실루엣 구분
+- 정예 점선 외곽선, 보스 중심 코어와 페이즈 색상, 플레이어 중심 표식 강화
+- 위험 선과 위험 원형의 적색 대비 및 범위 내부 음영 강화
+- 능력 카드에서 신규/강화와 희귀도를 동시에 표시하고 좌측 강조선 추가
+- DPR 2 브라우저 환경에서 내부 테스트 12개 통과
+- service worker 캐시명을 `abyss-survivor-v10.1.3`으로 갱신
+
+Abyss Survivor v10.1.2
+
+v10.1.2 전투 피드백 / 접근성 설정
+- 외부 음원 없이 Web Audio로 적중, 피격, 보스, 업그레이드, 클리어 효과음 합성
+- 모바일 진동과 감쇠형 화면 흔들림 추가
+- 효과음, 진동, 화면 흔들림, 효과 줄이기, 피해 숫자 개별 설정 추가
+- 기존 저장 데이터에 새 설정값 fallback 적용
+- 내부 브라우저 테스트 12개 통과
+- service worker 캐시명을 `abyss-survivor-v10.1.2`로 갱신
+
+Abyss Survivor v10.1.1
+
+v10.1.1 고해상도 Canvas / 내부 회귀 테스트
+- Canvas 논리 좌표 360x560을 유지하면서 기기 픽셀 배율에 맞춰 렌더 버퍼 확대
+- 모바일 성능을 위해 Canvas 픽셀 배율 상한을 2로 제한
+- 일반 배율과 DPR 2 환경에서 내부 테스트 11개 통과
+- service worker 캐시명을 `abyss-survivor-v10.1.1`로 갱신
+
 Abyss Survivor v10.0
 
 v10.0 최종 안정화 / 가벼운 PWA / 아이콘 마감

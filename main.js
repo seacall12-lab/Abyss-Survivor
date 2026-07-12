@@ -9,7 +9,7 @@
   }
 
   function hasModules() {
-    const required = ["Data", "State", "Game", "Render", "UI"];
+    const required = ["Data", "State", "Feedback", "Game", "Render", "UI", "PWA"];
 
     for (let i = 0; i < required.length; i += 1) {
       if (!AS[required[i]]) {

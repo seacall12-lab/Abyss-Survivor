@@ -8,6 +8,7 @@
     game: {
       width: 360,
       height: 560,
+      maxCanvasPixelRatio: 2,
       worldWidth: 1080,
       worldHeight: 1680,
       runDuration: 300,

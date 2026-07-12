@@ -4,11 +4,43 @@
   const Data = AS.Data || {};
   let canvas = null;
   let ctx = null;
+  let canvasPixelRatio = 1;
 
   function safeNumber(value, fallback) {
     const numberValue = Number(value);
     const safeFallback = Number.isFinite(Number(fallback)) ? Number(fallback) : 0;
     return Number.isFinite(numberValue) ? numberValue : safeFallback;
+  }
+
+  function getCanvasPixelRatio() {
+    const game = Data.game || {};
+    const devicePixelRatio = safeNumber(window.devicePixelRatio, 1);
+    const maxPixelRatio = Math.max(1, safeNumber(game.maxCanvasPixelRatio, 2));
+
+    return Math.max(1, Math.min(devicePixelRatio, maxPixelRatio));
+  }
+
+  function resizeCanvasBuffer(force) {
+    const game = Data.game || {};
+    const logicalWidth = Math.max(1, safeNumber(game.width, 360));
+    const logicalHeight = Math.max(1, safeNumber(game.height, 560));
+    const nextPixelRatio = getCanvasPixelRatio();
+    const bufferWidth = Math.max(1, Math.round(logicalWidth * nextPixelRatio));
+    const bufferHeight = Math.max(1, Math.round(logicalHeight * nextPixelRatio));
+
+    if (!canvas || !ctx) {
+      return false;
+    }
+
+    if (force || canvas.width !== bufferWidth || canvas.height !== bufferHeight || canvasPixelRatio !== nextPixelRatio) {
+      canvas.width = bufferWidth;
+      canvas.height = bufferHeight;
+      canvasPixelRatio = nextPixelRatio;
+      ctx.setTransform(canvasPixelRatio, 0, 0, canvasPixelRatio, 0, 0);
+      return true;
+    }
+
+    return false;
   }
 
   function drawCircle(x, y, radius, color) {
@@ -69,6 +101,46 @@
       y: safeNumber(camera.y, 0),
       width: safeNumber(camera.width, width),
       height: safeNumber(camera.height, height)
+    };
+  }
+
+  function drawPolygon(x, y, radius, sides, rotation, fillColor, strokeColor, lineWidth) {
+    const count = Math.max(3, Math.floor(safeNumber(sides, 3)));
+
+    ctx.beginPath();
+    for (let i = 0; i < count; i += 1) {
+      const angle = safeNumber(rotation, 0) + Math.PI * 2 * i / count;
+      const px = x + Math.cos(angle) * radius;
+      const py = y + Math.sin(angle) * radius;
+      if (i === 0) {
+        ctx.moveTo(px, py);
+      } else {
+        ctx.lineTo(px, py);
+      }
+    }
+    ctx.closePath();
+    if (fillColor) {
+      ctx.fillStyle = fillColor;
+      ctx.fill();
+    }
+    if (strokeColor) {
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = Math.max(1, safeNumber(lineWidth, 1));
+      ctx.stroke();
+    }
+  }
+
+  function getScreenShake(run) {
+    const timer = Math.max(0, safeNumber(run && run.screenShakeTimer, 0));
+    const duration = Math.max(0.001, safeNumber(run && run.screenShakeDuration, timer));
+    const power = Math.max(0, safeNumber(run && run.screenShakePower, 0)) * Math.min(1, timer / duration);
+
+    if (power <= 0) {
+      return { x: 0, y: 0 };
+    }
+    return {
+      x: (Math.random() * 2 - 1) * power,
+      y: (Math.random() * 2 - 1) * power
     };
   }
 
@@ -254,7 +326,7 @@
           ctx.stroke();
         }
       } else if (effect.type === "warningLine") {
-        ctx.strokeStyle = "rgba(255, 93, 93, " + (0.16 + alpha * 0.34) + ")";
+        ctx.strokeStyle = "rgba(255, 75, 92, " + (0.2 + alpha * 0.42) + ")";
         ctx.lineWidth = Math.max(12, safeNumber(effect.lineWidth, 28));
         ctx.lineCap = "round";
         ctx.beginPath();
@@ -263,8 +335,12 @@
         ctx.stroke();
         ctx.lineCap = "butt";
       } else if (effect.type === "warningCircle") {
-        ctx.strokeStyle = "rgba(255, 93, 93, " + (0.22 + alpha * 0.46) + ")";
-        ctx.lineWidth = 3;
+        ctx.fillStyle = "rgba(255, 55, 75, " + (0.025 + alpha * 0.055) + ")";
+        ctx.beginPath();
+        ctx.arc(safeNumber(effect.x, 0), safeNumber(effect.y, 0), Math.max(8, safeNumber(effect.radius, 48)), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255, 75, 92, " + (0.35 + alpha * 0.58) + ")";
+        ctx.lineWidth = 4;
         ctx.setLineDash([7, 5]);
         ctx.beginPath();
         ctx.arc(safeNumber(effect.x, 0), safeNumber(effect.y, 0), Math.max(8, safeNumber(effect.radius, 48)), 0, Math.PI * 2);
@@ -363,15 +439,35 @@
       const hpRatio = Math.max(0, Math.min(1, safeNumber(enemy.hp, 0) / Math.max(1, safeNumber(enemy.maxHp, 1))));
       const flash = safeNumber(enemy.hitFlashTimer, 0) > 0;
 
-      drawCircle(enemy.x, enemy.y, radius + (flash ? 3 : 0), flash ? "rgba(255, 255, 255, 0.45)" : "rgba(0, 0, 0, 0)");
-      drawCircle(enemy.x, enemy.y, radius, flash ? "#ffffff" : (enemy.color || "#6bb7d6"));
+      const color = flash ? "#ffffff" : (enemy.color || "#6bb7d6");
+      const outline = enemy.isBoss ? "#ffe28a" : (enemy.elite ? "#f4f8ff" : "rgba(4, 10, 16, 0.82)");
+
+      drawCircle(enemy.x, enemy.y, radius + 4, flash ? "rgba(255, 255, 255, 0.4)" : "rgba(0, 0, 0, 0.3)");
+      if (enemy.isBoss) {
+        drawPolygon(enemy.x, enemy.y, radius, 6, Math.PI / 6, color, outline, 2.5);
+        drawPolygon(enemy.x, enemy.y, radius * 0.46, 6, 0, enemy.phaseTwo ? "#ff6b9f" : "#301524", "rgba(255,255,255,0.65)", 1.5);
+      } else if (enemy.type === "fast") {
+        drawPolygon(enemy.x, enemy.y, radius, 4, Math.PI / 4, color, outline, 1.5);
+      } else if (enemy.type === "tank") {
+        drawPolygon(enemy.x, enemy.y, radius, 4, 0, color, outline, 2);
+        drawPolygon(enemy.x, enemy.y, radius * 0.45, 4, Math.PI / 4, "rgba(4,10,16,0.45)", null, 0);
+      } else {
+        drawCircle(enemy.x, enemy.y, radius, color);
+        ctx.strokeStyle = outline;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(enemy.x, enemy.y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+      }
 
       if (enemy.elite) {
-        ctx.strokeStyle = "#ffffff";
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
         ctx.lineWidth = 2;
+        ctx.setLineDash([4, 3]);
         ctx.beginPath();
-        ctx.rect(enemy.x - radius - 3, enemy.y - radius - 3, (radius + 3) * 2, (radius + 3) * 2);
+        ctx.arc(enemy.x, enemy.y, radius + 5, 0, Math.PI * 2);
         ctx.stroke();
+        ctx.setLineDash([]);
       }
 
       if (enemy.isBoss) {
@@ -390,8 +486,8 @@
         ctx.beginPath();
         ctx.arc(enemy.x, enemy.y, radius + (safeNumber(enemy.chargePrepareTimer, 0) > 0 ? 9 : 5), 0, Math.PI * 2);
         ctx.stroke();
-        ctx.fillStyle = "#ffe28a";
-        ctx.fillRect(enemy.x - 7, enemy.y - radius - 16, 14, 3);
+        ctx.fillStyle = enemy.phaseTwo ? "#ff6b9f" : "#ffe28a";
+        ctx.fillRect(enemy.x - 9, enemy.y - radius - 17, 18, 3);
       }
 
       ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
@@ -407,9 +503,20 @@
     const isInvincible = safeNumber(run.invincibleTimer, 0) > 0;
     const isHit = safeNumber(player.hitFlashTimer, 0) > 0;
 
-    drawCircle(player.x, player.y, radius + 7, isHit ? "rgba(255, 107, 128, 0.24)" : "rgba(73, 224, 184, 0.16)");
-    drawCircle(player.x, player.y, radius + 2, "rgba(213, 239, 115, 0.18)");
+    drawCircle(player.x, player.y, radius + 8, isHit ? "rgba(255, 107, 128, 0.3)" : "rgba(73, 224, 184, 0.2)");
+    drawCircle(player.x, player.y, radius + 3, "rgba(213, 239, 115, 0.28)");
     drawCircle(player.x, player.y, radius, isHit || isInvincible ? "#ffffff" : "#49e0b8");
+    drawPolygon(player.x, player.y, radius * 0.5, 4, Math.PI / 4, "#eaffff", "#071019", 1);
+
+    ctx.strokeStyle = "rgba(213, 239, 115, 0.85)";
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 4; i += 1) {
+      const angle = Math.PI * 0.5 * i;
+      ctx.beginPath();
+      ctx.moveTo(player.x + Math.cos(angle) * (radius + 4), player.y + Math.sin(angle) * (radius + 4));
+      ctx.lineTo(player.x + Math.cos(angle) * (radius + 8), player.y + Math.sin(angle) * (radius + 8));
+      ctx.stroke();
+    }
 
     ctx.strokeStyle = "#071019";
     ctx.lineWidth = 2;
@@ -462,24 +569,27 @@
       canvas = targetCanvas;
       ctx = canvas && canvas.getContext ? canvas.getContext("2d") : null;
 
-      if (canvas && Data.game) {
-        canvas.width = safeNumber(Data.game.width, 360);
-        canvas.height = safeNumber(Data.game.height, 560);
-      }
+      resizeCanvasBuffer(true);
 
       return !!ctx;
     },
 
+    getPixelRatio: function () {
+      return canvasPixelRatio;
+    },
+
     draw: function (run) {
       const camera = getCamera(run);
+      const shake = getScreenShake(run);
 
       if (!ctx || !run) {
         return;
       }
 
+      resizeCanvasBuffer(false);
       drawBackground(run);
       ctx.save();
-      ctx.translate(-camera.x, -camera.y);
+      ctx.translate(-camera.x + shake.x, -camera.y + shake.y);
       drawGems(run);
       drawMiniObjectives(run);
       drawEffects(run);

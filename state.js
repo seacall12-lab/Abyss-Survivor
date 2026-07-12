@@ -128,6 +128,9 @@
       settings: {
         reducedEffects: false,
         showDamageNumbers: true,
+        soundEnabled: true,
+        vibrationEnabled: true,
+        screenShakeEnabled: true,
         assistMode: "normal"
       }
     };
@@ -368,6 +371,9 @@
     return {
       reducedEffects: !!source.reducedEffects,
       showDamageNumbers: source.showDamageNumbers !== false,
+      soundEnabled: source.soundEnabled !== false,
+      vibrationEnabled: source.vibrationEnabled !== false,
+      screenShakeEnabled: source.screenShakeEnabled !== false,
       assistMode: assistMode
     };
   }
@@ -1400,6 +1406,10 @@
         run.mode = states.gameover || "gameover";
       }
 
+      if (AS.Feedback && AS.Feedback.emit) {
+        AS.Feedback.emit(isClear ? "clear" : "gameover", run);
+      }
+
       if (!run.unlockChecked) {
         run.unlockChecked = true;
         run.newlyUnlocked = checkUnlocks(save);
@@ -1479,6 +1489,12 @@
         settings.showDamageNumbers = value !== false;
       } else if (key === "reducedEffects") {
         settings.reducedEffects = !!value;
+      } else if (key === "soundEnabled") {
+        settings.soundEnabled = value !== false;
+      } else if (key === "vibrationEnabled") {
+        settings.vibrationEnabled = value !== false;
+      } else if (key === "screenShakeEnabled") {
+        settings.screenShakeEnabled = value !== false;
       }
 
       save.settings = settings;

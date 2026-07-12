@@ -351,6 +351,32 @@ button {
   gap: 4px;
 }
 
+.install-button {
+  color: #dff7ff;
+  background: linear-gradient(135deg, #27485b, #39356f);
+}
+
+.install-help {
+  margin-top: 7px !important;
+  padding: 8px;
+  border: 1px solid rgba(143, 216, 255, 0.22);
+  border-radius: 7px;
+  background: rgba(8, 16, 24, 0.86);
+  color: #d8f7ff !important;
+}
+
+.is-hidden {
+  display: none !important;
+}
+
+.ability-button.is-new {
+  box-shadow: inset 3px 0 0 var(--rarity-color, #49e0b8), inset 0 0 0 1px rgba(170, 229, 239, 0.14);
+}
+
+.ability-button.is-upgrade {
+  box-shadow: inset 3px 0 0 var(--rarity-color, #ffe28a), inset 0 0 0 1px rgba(255, 226, 138, 0.16);
+}
+
 .choice-tools {
   display: flex;
   align-items: center;

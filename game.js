@@ -14,6 +14,12 @@
     return Math.max(min, Math.min(max, value));
   }
 
+  function emitFeedback(type, run) {
+    if (AS.Feedback && AS.Feedback.emit) {
+      AS.Feedback.emit(type, run);
+    }
+  }
+
   function distanceSquared(a, b) {
     const dx = safeNumber(a.x, 0) - safeNumber(b.x, 0);
     const dy = safeNumber(a.y, 0) - safeNumber(b.y, 0);
@@ -942,6 +948,7 @@
         run.message = "보스가 나타났습니다";
       }
       run.messageTimer = 3;
+      emitFeedback("boss", run);
     }
   }
 
@@ -2327,6 +2334,7 @@
     }
 
     if (enemy.isBoss) {
+      emitFeedback("bossDefeated", run);
       if (enemy.finalBoss || enemy.bossId === "abyssSovereign") {
         run.finalBossDefeated = true;
       }
@@ -2428,6 +2436,7 @@
         }
         player.hitFlashTimer = 0.16;
         pushImpactEffect(run, player, "player", safeNumber(player.radius, 12) + 8);
+        emitFeedback("playerHit", run);
 
         if (player.hp <= 0) {
           AS.State.finishRun(false);
@@ -2465,6 +2474,7 @@
     enemy.hitFlashTimer = Math.max(safeNumber(enemy.hitFlashTimer, 0), 0.1);
     pushImpactEffect(run, enemy, damageType, safeNumber(enemy.radius, 8) + (damageType === "explosion" ? 12 : 6));
     pushDamageText(run, safeNumber(enemy.x, 0), safeNumber(enemy.y, 0) - safeNumber(enemy.radius, 8), damage, getEffectColor(damageType));
+    emitFeedback("hit", run);
 
     if (enemy.hp <= 0) {
       const index = run.enemies.indexOf(enemy);
@@ -2632,6 +2642,7 @@
           player.hp = Math.max(0, safeNumber(player.hp, 0) - Math.max(4, safeNumber(boss.damage, 12) * 0.35) * safeNumber(player.damageTakenMultiplier, 1));
           player.hitFlashTimer = 0.16;
           pushImpactEffect(run, player, "player", safeNumber(player.radius, 12) + 10);
+          emitFeedback("playerHit", run);
           if (player.hp <= 0) {
             AS.State.finishRun(false);
             return;
@@ -2673,6 +2684,7 @@
         if (distanceSquared(player, boss) <= Math.pow(safeNumber(boss.auraRadius, 88) + 26, 2)) {
           player.hp = Math.max(0, safeNumber(player.hp, 0) - Math.max(2, safeNumber(boss.damage, 12) * 0.18) * safeNumber(player.damageTakenMultiplier, 1));
           player.hitFlashTimer = 0.12;
+          emitFeedback("playerHit", run);
           if (player.hp <= 0) {
             AS.State.finishRun(false);
             return;
@@ -2687,6 +2699,7 @@
           player.hp = Math.max(0, safeNumber(player.hp, 0) - Math.max(1, safeNumber(pattern.auraDamage, 5) * (1 + safeNumber(boss.auraDamageBonus, 0)) * safeNumber(player.damageTakenMultiplier, 1)));
           player.hitFlashTimer = 0.16;
           pushImpactEffect(run, player, "player", safeNumber(player.radius, 12) + 10);
+          emitFeedback("playerHit", run);
           if (player.hp <= 0) {
             AS.State.finishRun(false);
             return;
@@ -3295,6 +3308,9 @@
 
       ensureRunCollections(run);
       sanitizeRunNumbers(run);
+      if (AS.Feedback && AS.Feedback.update) {
+        AS.Feedback.update(run, safeDelta);
+      }
       run.time = Math.max(0, safeNumber(run.time, 0) + safeDelta);
       run.remainingTime = Math.max(0, safeNumber(run.runDuration, safeNumber(game.runDuration, 180)) - run.time);
       updateMapChoiceTrigger(run);
@@ -3381,6 +3397,7 @@
       }
 
       updateBuildBonuses(run);
+      emitFeedback("upgrade", run);
       run.pendingAbilities = [];
       run.relicChoices = [];
       run.mode = states.running || "running";

@@ -1008,6 +1008,39 @@
       });
       list.appendChild(button);
     }
+
+    [
+      { key: "soundEnabled", icon: "♪", name: "효과음", description: "공격, 피격, 보스와 결과 효과음" },
+      { key: "vibrationEnabled", icon: "≋", name: "진동", description: "모바일 피격과 중요 이벤트 진동" },
+      { key: "screenShakeEnabled", icon: "↯", name: "화면 흔들림", description: "강한 충돌과 보스 연출의 흔들림" },
+      { key: "reducedEffects", icon: "◌", name: "효과 줄이기", description: "화면 흔들림 등 강한 연출 최소화", inverted: true },
+      { key: "showDamageNumbers", icon: "123", name: "피해 숫자", description: "적에게 준 피해량을 화면에 표시" }
+    ].forEach(function (option) {
+      const button = document.createElement("button");
+      const body = document.createElement("span");
+      const name = document.createElement("strong");
+      const description = document.createElement("span");
+      const rawValue = settings[option.key];
+      const enabled = option.inverted ? !!rawValue : rawValue !== false;
+
+      button.type = "button";
+      button.className = "choice-button" + (enabled ? " is-selected" : "");
+      button.setAttribute("aria-pressed", enabled ? "true" : "false");
+      body.className = "choice-body";
+      name.textContent = option.name + " · " + (enabled ? "켜짐" : "꺼짐");
+      description.textContent = option.description;
+      body.appendChild(name);
+      body.appendChild(description);
+      button.appendChild(createIcon(option.icon, "choice-icon", option.key, "settings"));
+      button.appendChild(body);
+      button.addEventListener("click", function () {
+        if (AS.State && AS.State.setSetting) {
+          AS.State.setSetting(option.key, option.inverted ? !rawValue : rawValue === false);
+          renderLobbyModal();
+        }
+      });
+      list.appendChild(button);
+    });
   }
 
   function renderLobbyModal() {
@@ -1314,7 +1347,13 @@
     lastOverlaySignature = "";
     lastHudSignature = "";
     buildPanelOpen = false;
-    AS.State.startRun();
+    if (AS.Feedback && AS.Feedback.unlock) {
+      AS.Feedback.unlock();
+    }
+    const run = AS.State.startRun();
+    if (AS.Feedback && AS.Feedback.emit) {
+      AS.Feedback.emit("start", run);
+    }
     AS.UI.hideOverlay();
   }
 
@@ -1638,6 +1677,9 @@
       }
 
       setPanelVisible(elements.startPanel, mode === (states.title || "title") || mode === (states.paused || "paused"));
+      if (AS.PWA && AS.PWA.setLobbyVisible) {
+        AS.PWA.setLobbyVisible(mode === (states.title || "title"));
+      }
       setPanelVisible(elements.levelUpPanel, mode === (states.levelup || "levelup"));
       setPanelVisible(elements.mapChoicePanel, mode === (states.mapChoice || "mapChoice"));
       setPanelVisible(elements.gameOverPanel, mode === (states.gameover || "gameover"));
@@ -1780,18 +1822,20 @@
         const category = ability.category || "normal";
         const rarity = rarityForItem(ability, category);
         const meta = rarityMeta(rarity);
+        const currentLevel = safeInteger(run && run.abilityLevels && run.abilityLevels[ability.id], 0);
+        const categoryLabel = category === "evolution" ? "진화" : (category === "relic" ? "유물" : (category === "support" ? "보조무기" : (category === "supportUpgrade" ? "보조강화" : (currentLevel > 0 ? "강화" : "신규"))));
 
         card.className = "ability-card";
         button.className = category === "evolution" ? "ability-button is-evolution" : (category === "relic" ? "ability-button is-relic" : "ability-button");
         button.type = "button";
         button.dataset.abilityId = ability.id;
+        button.classList.add(currentLevel > 0 ? "is-upgrade" : "is-new");
         applyRarityStyle(button, ability, category);
         applyRarityStyle(icon, ability, category);
         body.className = "ability-body";
         tag.className = "ability-tag";
         applyRarityStyle(tag, rarity);
-        tag.textContent = category === "evolution" ? "진화" : (category === "relic" ? "유물 · " + (ability.rarity || "일반") : (category === "support" ? "보조무기" : (category === "supportUpgrade" ? "보조강화" : "강화")));
-        tag.textContent = meta.label || "일반";
+        tag.textContent = categoryLabel + " · " + (meta.label || "일반");
         name.textContent = ability.name;
         description.textContent = shortenDescription(ability.description);
         insight.className = "ability-insight";

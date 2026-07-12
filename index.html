@@ -10,7 +10,7 @@
   <title>Abyss Survivor</title>
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="./icons/icon.svg">
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -49,6 +49,8 @@
           <h1>Abyss Survivor</h1>
           <p>5분 생존, 보스 처치, 최종 웨이브</p>
           <button id="startButton" class="primary-button" type="button">시작</button>
+          <button id="installButton" class="secondary-button install-button is-hidden" type="button">▣ 앱 설치</button>
+          <p id="installHelp" class="install-help is-hidden">Safari 하단의 공유 버튼을 누른 뒤 ‘홈 화면에 추가’를 선택하세요.</p>
         </div>
 
         <div id="levelUpPanel" class="overlay-panel is-hidden">
@@ -107,9 +109,11 @@
 
   <script src="data.js"></script>
   <script src="state.js"></script>
+  <script src="feedback.js"></script>
   <script src="game.js"></script>
   <script src="render.js"></script>
   <script src="ui.js"></script>
+  <script src="pwa.js"></script>
   <script src="main.js"></script>
 </body>
 </html>

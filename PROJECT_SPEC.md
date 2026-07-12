@@ -23,14 +23,20 @@ index.html
 style.css
 data.js
 state.js
+feedback.js
 game.js
 render.js
 ui.js
+pwa.js
 main.js
 manifest.json
 service-worker.js
 icons/icon.svg
+icons/icon-192.png
+icons/icon-512.png
+icons/apple-touch-icon.png
 test-runner.html
+tests.js
 README.md
 version-up.txt
 development-history.txt
@@ -42,9 +48,11 @@ PROJECT_SPEC.md
 ```html
 <script src="data.js"></script>
 <script src="state.js"></script>
+<script src="feedback.js"></script>
 <script src="game.js"></script>
 <script src="render.js"></script>
 <script src="ui.js"></script>
+<script src="pwa.js"></script>
 <script src="main.js"></script>
 ```
 
@@ -53,9 +61,11 @@ PROJECT_SPEC.md
 ```text
 AbyssSurvivor.Data
 AbyssSurvivor.State
+AbyssSurvivor.Feedback
 AbyssSurvivor.Game
 AbyssSurvivor.Render
 AbyssSurvivor.UI
+AbyssSurvivor.PWA
 AbyssSurvivor.Main
 ```
 
@@ -133,9 +143,12 @@ v9 엔드게임
 manifest.json
 service-worker.js
 icons/icon.svg
+icons/icon-192.png
+icons/icon-512.png
+icons/apple-touch-icon.png
 ```
 
-캐시명은 `abyss-survivor-v10.1.0`이다. PWA 아이콘은 `icons/icon.svg`만 사용하며 PNG 아이콘 파일은 필수로 요구하지 않는다. service worker는 게임 실행에 필요한 최소 파일만 캐시한다. `test-runner.html`과 문서 파일은 캐시하지 않는다. 등록 실패는 게임 실행 실패로 이어지면 안 된다.
+캐시명은 `abyss-survivor-v10.2.0`이다. manifest는 192px/512px PNG와 maskable 아이콘을 제공하고 iOS는 180px apple-touch-icon을 사용한다. Android 계열은 `beforeinstallprompt`, iOS는 홈 화면 추가 안내를 사용한다. 이미 standalone으로 실행 중이면 설치 버튼을 숨긴다. service worker는 게임 실행에 필요한 파일과 설치 아이콘을 캐시하고 `test-runner.html`, `tests.js`, 문서 파일은 캐시하지 않는다.
 
 ## 안정화 기준
 
@@ -158,27 +171,28 @@ PWA manifest/service worker/icon 연결
 빌드 현황과 임무 HUD 표시
 레벨업 선택지 시너지, 리롤, 고정, 제외 기능
 추천 조합과 접근성 난이도 설정
+효과음, 진동, 화면 흔들림과 효과 감소 설정
+적 유형별 실루엣, 정예/보스 외곽선, 플레이어 중심 표식
+능력 선택 카드의 신규/강화와 희귀도 정보 계층
 봉화 미니 목표 완료/실패 기록
 보스/정예 예고 effect 표시
 ```
 
 ## 테스트 기준
 
-`test-runner.html`에서 다음 항목을 확인한다.
+`test-runner.html`과 `tests.js`에서 저장값을 백업·복원하며 다음 항목을 자동 확인한다.
 
 ```text
-모듈 존재
-일반 script 로딩
-저장 데이터 fallback
-상태 전환 중 업데이트 정지
-보상 중복 방어
-NaN/Infinity 방어
-damageStats 방어
-생존/보스 러시 분리
-아이콘 fallback
-v8 지도 선택
-v9 엔드게임 보상 중복 방어
-PWA 연결
-빌드/선택 편의 기능
-미니 목표와 보스 예고
+필수 게임 모듈 로딩
+기본 저장 스키마
+손상된 JSON fallback
+잘못된 선택 ID와 숫자 보정
+게임 시작 상태와 도전 횟수 반영
+일시정지 중 업데이트 정지
+프레임 delta 상한
+종료 보상과 통계의 중복 반영 방지
+NaN/Infinity 피해와 damageStats 방어
+기기 픽셀 배율에 따른 Canvas 버퍼 크기
+피드백 설정 fallback과 화면 흔들림 감소
+잘못된 상태 전환 거부
 ```
